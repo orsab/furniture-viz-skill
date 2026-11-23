@@ -3,7 +3,20 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneModel } from 'three/addons/utils/SkeletonUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { resolveVec } from '../lib/coordinates.mjs';
+import { createKinematics, stepPhysicsSubstep } from '../lib/kinematics.mjs';
+import { STUDIO_PRESETS, LED_TEMPS, ROOM_WALL_PRESETS, ROOM_FLOOR_PRESETS } from './presets.mjs';
+import {
+  DEFAULT_ACTION_DELAY_MS,
+  detectSeats,
+  computeInteractionTarget,
+  planFloorPath,
+  pickNextPersonAction
+} from './person-ai.mjs';
 import { makeMannequin } from './mannequin.mjs';
 import { makeFinishes, makePlate, mapBoardUV, mapCylinderUV } from './materials.mjs';
 
@@ -13,39 +26,6 @@ const vector = () => new T.Vector3();
 const corners = () => Array.from({ length: 8 }, vector);
 const halfSign = (corner, axisBit) => (corner & axisBit) ? .5 : -.5;
 const studioDirection = new T.Vector3(.85, .56, 1.55).normalize();
-
-const STUDIO_PRESETS = {
-  daylight: {
-    label: 'Daylight',
-    bgInner: '#f4f0e8', bgOuter: '#ded6c7',
-    hemiSky: 0xfff9ee, hemiGround: 0xe3d6c4, hemiIntensity: 0.56,
-    keyColor: 0xfff5e4, keyIntensity: 2.35,
-    fillColor: 0xdce8ff, fillIntensity: 0.72,
-    rimColor: 0xfff1db, rimIntensity: 0.55,
-    exposure: 1.04, envIntensity: 0.85,
-    envSoftbox: 0xfffcf5, envWindow: 0xeaf2ff, envRim: 0xfff0d6, envFloor: 0xd7cebe, envWall: 0xc2b8a8
-  },
-  gallery: {
-    label: 'Warm gallery',
-    bgInner: '#efe7d8', bgOuter: '#d5c7b2',
-    hemiSky: 0xfff1dc, hemiGround: 0xdac6ae, hemiIntensity: 0.52,
-    keyColor: 0xffe6bf, keyIntensity: 2.45,
-    fillColor: 0xe6e8f2, fillIntensity: 0.6,
-    rimColor: 0xffdcae, rimIntensity: 0.7,
-    exposure: 1.02, envIntensity: 0.88,
-    envSoftbox: 0xfff3de, envWindow: 0xffe4bc, envRim: 0xffd5a1, envFloor: 0xcab9a1, envWall: 0xb6a48c
-  },
-  crisp: {
-    label: 'Crisp neutral',
-    bgInner: '#f5f6f4', bgOuter: '#dee1de',
-    hemiSky: 0xffffff, hemiGround: 0xdcdfdc, hemiIntensity: 0.58,
-    keyColor: 0xffffff, keyIntensity: 2.25,
-    fillColor: 0xe4ecff, fillIntensity: 0.8,
-    rimColor: 0xf4f7ff, rimIntensity: 0.5,
-    exposure: 1.0, envIntensity: 0.85,
-    envSoftbox: 0xffffff, envWindow: 0xeaf1ff, envRim: 0xf7f9ff, envFloor: 0xd6d9d6, envWall: 0xc0c4c0
-  }
-};
 
 // A bin can reference an external buffer/image despite being a .glb. Inspect authored
 // URIs before parsing (some optional texture failures are otherwise swallowed by glTF).
@@ -275,7 +255,13 @@ function lightStudio(renderer, scene) {
 
   return {
     setPreset,
+    getPresetName: () => activePreset,
+    getLightBoost: () => STUDIO_PRESETS[activePreset]?.lightBoost ?? 1,
     getBackdropTexture: () => bgCache.get(activePreset),
+    setFloorVisible(visible) {
+      floor.visible = Boolean(visible);
+      contactAO.mesh.visible = Boolean(visible);
+    },
     updateShadowBounds(bounds, furnitureBounds, parts, personVisible, personBounds) {
       const r = Math.max(5, bounds.min.distanceTo(bounds.max) * 0.65);
       const center = bounds.getCenter(key.target.position);
@@ -291,20 +277,250 @@ function lightStudio(renderer, scene) {
   };
 }
 
+// Architectural room enclosure: procedural tiled oak/travertine/microcement floor,
+// single-sided +Z rear wall (visible from front/studio, never blocks Back view), and non-clipping skirting.
+function createRoomShell() {
+  const group = new T.Group();
+  group.visible = false;
+
+  const floorTexCache = new Map();
+  function makeFloorTexture(kindId) {
+    if (floorTexCache.has(kindId)) return floorTexCache.get(kindId);
+    const preset = ROOM_FLOOR_PRESETS.find(f => f.id === kindId) || ROOM_FLOOR_PRESETS[0];
+    const size = 512;
+    const cvs = document.createElement('canvas');
+    cvs.width = size;
+    cvs.height = size;
+    const ctx = cvs.getContext('2d');
+    ctx.fillStyle = preset.baseHex;
+    ctx.fillRect(0, 0, size, size);
+
+    let seed = kindId === 'oak' ? 19 : kindId === 'stone' ? 47 : 83;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    if (kindId === 'oak') {
+      const rows = 8;
+      const ph = size / rows;
+      for (let r = 0; r < rows; r++) {
+        const y = r * ph;
+        const offset = (r % 2) * (size * 0.5);
+        for (let c = 0; c < 2; c++) {
+          const x = (c * size * 0.5 + offset) % size;
+          ctx.fillStyle = preset.grainHex;
+          ctx.globalAlpha = 0.08 + rand() * 0.14;
+          ctx.fillRect(x, y, size * 0.5, ph);
+          ctx.globalAlpha = 0.16 + rand() * 0.14;
+          for (let g = 0; g < 14; g++) {
+            const gy = y + 3 + rand() * (ph - 6);
+            ctx.fillRect(x, gy, size * 0.5, 1.2);
+          }
+        }
+        ctx.globalAlpha = 0.36;
+        ctx.fillStyle = preset.lineHex;
+        ctx.fillRect(0, y, size, 1.6);
+        ctx.fillRect((offset + size * 0.5) % size, y, 1.6, ph);
+      }
+      ctx.globalAlpha = 1;
+    } else if (kindId === 'stone') {
+      const tiles = 4;
+      const step = size / tiles;
+      for (let r = 0; r < tiles; r++) {
+        for (let c = 0; c < tiles; c++) {
+          ctx.fillStyle = preset.grainHex;
+          ctx.globalAlpha = 0.06 + rand() * 0.12;
+          ctx.fillRect(c * step, r * step, step, step);
+        }
+      }
+      for (let i = 0; i < 650; i++) {
+        ctx.fillStyle = i % 2 ? preset.grainHex : preset.lineHex;
+        ctx.globalAlpha = 0.08;
+        ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 14, 1 + rand() * 2);
+      }
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = preset.lineHex;
+      for (let i = 0; i < tiles; i++) {
+        ctx.fillRect(0, i * step, size, 1.5);
+        ctx.fillRect(i * step, 0, 1.5, size);
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      for (let i = 0; i < 900; i++) {
+        ctx.fillStyle = i % 2 ? preset.grainHex : preset.lineHex;
+        ctx.globalAlpha = 0.05 + rand() * 0.06;
+        ctx.beginPath();
+        ctx.arc(rand() * size, rand() * size, 6 + rand() * 28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = preset.lineHex;
+      ctx.fillRect(0, size * 0.5, size, 1);
+      ctx.fillRect(size * 0.5, 0, 1, size);
+      ctx.globalAlpha = 1;
+    }
+
+    const tex = new T.CanvasTexture(cvs);
+    tex.colorSpace = T.SRGBColorSpace;
+    tex.wrapS = T.RepeatWrapping;
+    tex.wrapT = T.RepeatWrapping;
+    tex.anisotropy = 4;
+    floorTexCache.set(kindId, tex);
+    return tex;
+  }
+
+  let wallColor = ROOM_WALL_PRESETS[0].hex;
+  let floorKind = ROOM_FLOOR_PRESETS[0].id;
+  let currentTex = makeFloorTexture(floorKind);
+
+  const floorMat = new T.MeshStandardMaterial({
+    map: currentTex,
+    roughness: 0.72,
+    metalness: 0.03
+  });
+  const wallMat = new T.MeshStandardMaterial({
+    color: wallColor,
+    roughness: 0.94,
+    metalness: 0,
+    side: T.FrontSide
+  });
+  const skirtMat = new T.MeshStandardMaterial({
+    color: new T.Color(wallColor).multiplyScalar(0.92),
+    roughness: 0.78,
+    metalness: 0.02
+  });
+
+  const floorMesh = new T.Mesh(new T.PlaneGeometry(1, 1), floorMat);
+  floorMesh.rotation.x = -Math.PI / 2;
+  floorMesh.receiveShadow = true;
+
+  const wallMesh = new T.Mesh(new T.PlaneGeometry(1, 1), wallMat);
+  wallMesh.receiveShadow = true;
+
+  const skirtGeo = new T.BoxGeometry(1, 1, 1);
+  const leftSkirt = new T.Mesh(skirtGeo, skirtMat);
+  const rightSkirt = new T.Mesh(skirtGeo, skirtMat);
+  leftSkirt.castShadow = leftSkirt.receiveShadow = true;
+  rightSkirt.castShadow = rightSkirt.receiveShadow = true;
+
+  group.add(floorMesh, wallMesh, leftSkirt, rightSkirt);
+
+  let roomW = 9000;
+  let roomD = 7000;
+  function applyTileRepeat() {
+    currentTex.repeat.set(Math.max(1, roomW / 900), Math.max(1, roomD / 900));
+    currentTex.needsUpdate = true;
+  }
+
+  function fit(furnitureBounds, personBounds, personVisible) {
+    const empty = furnitureBounds.isEmpty();
+    const minX = empty ? -600 : furnitureBounds.min.x;
+    const maxX = empty ? 600 : furnitureBounds.max.x;
+    const minZ = empty ? -300 : furnitureBounds.min.z;
+    const maxZ = empty ? 300 : furnitureBounds.max.z;
+    const maxY = empty ? 1800 : furnitureBounds.max.y;
+
+    let sceneMinX = minX;
+    let sceneMaxX = maxX;
+    if (personVisible && !personBounds.isEmpty()) {
+      sceneMinX = Math.min(sceneMinX, personBounds.min.x);
+      sceneMaxX = Math.max(sceneMaxX, personBounds.max.x);
+    }
+    const cx = (sceneMinX + sceneMaxX) * 0.5;
+    const spanX = Math.max(1200, sceneMaxX - sceneMinX);
+    const spanZ = Math.max(800, maxZ - minZ);
+    roomW = Math.max(9000, spanX * 4);
+    roomD = Math.max(7000, spanZ * 6);
+    const wallH = Math.max(3600, maxY * 2.1);
+    const wallZ = minZ - 4;
+
+    floorMesh.position.set(cx, -0.3, wallZ + roomD * 0.45);
+    floorMesh.scale.set(roomW, roomD, 1);
+    wallMesh.position.set(cx, wallH * 0.5 - 0.5, wallZ);
+    wallMesh.scale.set(roomW, wallH, 1);
+    applyTileRepeat();
+
+    const roomLeft = cx - roomW * 0.5;
+    const roomRight = cx + roomW * 0.5;
+    const gapLeft = minX - 2;
+    const gapRight = maxX + 2;
+    const skirtH = 80;
+    const skirtD = 14;
+    const skirtZ = wallZ + skirtD * 0.5;
+
+    if (empty) {
+      leftSkirt.visible = true;
+      rightSkirt.visible = false;
+      leftSkirt.scale.set(roomW, skirtH, skirtD);
+      leftSkirt.position.set(cx, skirtH * 0.5 - 0.3, skirtZ);
+    } else {
+      const lw = Math.max(0, gapLeft - roomLeft);
+      const rw = Math.max(0, roomRight - gapRight);
+      leftSkirt.visible = lw > 1;
+      if (leftSkirt.visible) {
+        leftSkirt.scale.set(lw, skirtH, skirtD);
+        leftSkirt.position.set(roomLeft + lw * 0.5, skirtH * 0.5 - 0.3, skirtZ);
+      }
+      rightSkirt.visible = rw > 1;
+      if (rightSkirt.visible) {
+        rightSkirt.scale.set(rw, skirtH, skirtD);
+        rightSkirt.position.set(gapRight + rw * 0.5, skirtH * 0.5 - 0.3, skirtZ);
+      }
+    }
+  }
+
+  function setStyle({ wallColor: nextWall, floorKind: nextFloor } = {}) {
+    if (typeof nextWall === 'string' && /^#[\da-f]{6}$/i.test(nextWall)) {
+      wallColor = nextWall;
+      wallMat.color.set(wallColor);
+      skirtMat.color.set(wallColor).multiplyScalar(0.92);
+    }
+    if (nextFloor && ROOM_FLOOR_PRESETS.some(f => f.id === nextFloor)) {
+      floorKind = nextFloor;
+      currentTex = makeFloorTexture(floorKind);
+      floorMat.map = currentTex;
+      floorMat.needsUpdate = true;
+      applyTileRepeat();
+    }
+  }
+
+  function setVisible(visible) {
+    group.visible = Boolean(visible);
+  }
+
+  return { group, fit, setStyle, setVisible };
+}
+
+const DEFAULT_LOCALE = {
+  lang: 'en',
+  dir: 'ltr',
+  axes: ['W', 'H', 'D'],
+  mmUnit: 'mm',
+  term: x => x,
+  formatCanvasLabel: name => `Interactive 3D view of ${name}. Click doors, drawers, switches, or parts to interact, or pinch/scroll with two fingers to zoom.`,
+  formatHotspot: (kind, label, val) => kind === 'joint'
+    ? `${label}: ${val > 0.02 ? `Open (${Math.round(val * 100)}%), click to close` : 'Closed, click to open'}`
+    : `${label}: ${val >= 0.5 ? 'On, click to turn off' : 'Off, click to turn on'}`
+};
+
 // Shared W/H/D guide layout used identically by live SVG overlay and offscreen PNG export canvas.
-function computeGuideLayout(endpoints, cam, w, h, dims, uiScale = 1) {
+function computeGuideLayout(endpoints, cam, w, h, dims, uiScale = 1, locale = DEFAULT_LOCALE, measureTextFn = null) {
   const projected = corners();
   for (let i = 0; i < 8; i++) {
     const p = projected[i].copy(endpoints[i]).project(cam);
     p.x = (1 + p.x) * w / 2;
     p.y = (1 - p.y) * h / 2;
   }
-  const letters = ['W', 'H', 'D'];
+  const letters = locale?.axes ?? DEFAULT_LOCALE.axes;
+  const mmUnit = locale?.mmUnit ?? DEFAULT_LOCALE.mmUnit;
   const values = [dims.width, dims.height, dims.depth];
   const items = [];
   for (let axis = 0; axis < 3; axis++) {
-    const str = `${letters[axis]}  ${values[axis].toLocaleString('en-US')} mm`;
-    const half = Math.ceil((str.length * 3.65 + 6) * uiScale);
+    const str = `${letters[axis]}  ${values[axis].toLocaleString('en-US')} ${mmUnit}`;
+    const half = measureTextFn
+      ? Math.ceil(measureTextFn(str) * 0.5 + 8 * uiScale)
+      : Math.ceil((str.length * 4.1 + 8) * uiScale);
     const bit = 1 << axis;
     const dx = projected[bit].x - projected[0].x;
     const dy = projected[bit].y - projected[0].y;
@@ -349,7 +565,7 @@ function svgNode(tag, attrs, parent) {
   return node;
 }
 
-function measureOverlay(container) {
+function measureOverlay(container, initialLocale = DEFAULT_LOCALE) {
   const svg = svgNode('svg', { 'aria-hidden': 'true' }, container);
   svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden;display:none';
   const endpoints = corners();
@@ -361,7 +577,8 @@ function measureOverlay(container) {
     const text = svgNode('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#343a31', 'font-family': 'system-ui,sans-serif', 'font-size': 12, 'font-weight': 600 }, badge);
     return { ink, badge, bg, text };
   });
-  let visible = false, currentDims = { width: 1, height: 1, depth: 1 };
+  let visible = false, currentDims = { width: 1, height: 1, depth: 1 }, locale = initialLocale;
+  let lastCam = null, lastW = 0, lastH = 0;
   function set(on, dims) {
     visible = on;
     currentDims = { ...dims };
@@ -369,8 +586,9 @@ function measureOverlay(container) {
     for (let i = 0; i < 8; i++) endpoints[i].set(halfSign(i, 1) * dims.width, i & 2 ? dims.height : 0, halfSign(i, 4) * dims.depth);
   }
   function draw(cam, w, h) {
-    if (!visible || !w || !h) return;
-    const layout = computeGuideLayout(endpoints, cam, w, h, currentDims, 1);
+    lastCam = cam; lastW = w; lastH = h;
+    if (!visible || !w || !h || !cam) return;
+    const layout = computeGuideLayout(endpoints, cam, w, h, currentDims, 1, locale);
     for (let i = 0; i < 3; i++) {
       const a = layout[i], ui = indicators[i];
       if (a.str !== ui.text.textContent) {
@@ -385,13 +603,17 @@ function measureOverlay(container) {
       ui.badge.setAttribute('transform', `translate(${a.lx},${a.ly})`);
     }
   }
-  return { set, draw, endpoints };
+  function setLocale(nextLocale) {
+    locale = nextLocale || DEFAULT_LOCALE;
+    draw(lastCam, lastW, lastH);
+  }
+  return { set, draw, setLocale, endpoints };
 }
 
-function drawGuidesToCanvas(ctx, endpoints, cam, w, h, dims, scale) {
-  const layout = computeGuideLayout(endpoints, cam, w, h, dims, scale);
+function drawGuidesToCanvas(ctx, endpoints, cam, w, h, dims, scale, locale = DEFAULT_LOCALE) {
   ctx.save();
   ctx.font = `600 ${Math.round(12 * scale)}px system-ui, -apple-system, sans-serif`;
+  const layout = computeGuideLayout(endpoints, cam, w, h, dims, scale, locale, s => ctx.measureText(s).width);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const a of layout) {
@@ -435,7 +657,8 @@ function drawGuidesToCanvas(ctx, endpoints, cam, w, h, dims, scale) {
   ctx.restore();
 }
 
-export async function createStudio(container, spec, assets, callbacks = {}) {
+export async function createStudio(container, spec, assets, callbacks = {}, initialLocale = null) {
+  let locale = initialLocale || DEFAULT_LOCALE;
   const models = new Map();
   for (const part of spec.parts) if (part.shape === 'glb' && !models.has(part.asset)) {
     models.set(part.asset, await readAsset(part.asset, assets[part.asset]));
@@ -450,14 +673,17 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const canvas = renderer.domElement;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', `Interactive 3D view of ${spec.name}. Click doors, drawers, switches, or parts to interact, or use the camera controls.`);
+  canvas.setAttribute('aria-label', locale.formatCanvasLabel(locale.term(spec.name)));
   canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;cursor:grab';
   container.appendChild(canvas);
 
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   const scene = new T.Scene();
   const lighting = lightStudio(renderer, scene);
+  const room = createRoomShell();
+  scene.add(room.group);
   const finishes = makeFinishes(spec, renderer);
+  const kinematics = createKinematics(spec);
 
   const perspCam = new T.PerspectiveCamera(28, 1, 10, 50000);
   const orthoCam = new T.OrthographicCamera(-1, 1, 1, -1, 0.1, 10000);
@@ -465,8 +691,45 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   let activeCam = perspCam;
   activeCam.position.copy(studioDirection).multiplyScalar(3000);
 
+  let aoEnabled = true;
+  let xrayEnabled = false;
+  let ledTempId = '3500';
+  let backdropMode = 'studio';
+  let composer = null, renderPass = null, gtaoPass = null, outputPass = null;
+  const aoClipBox = new T.Box3();
+  try {
+    composer = new EffectComposer(renderer);
+    composer.setPixelRatio(renderer.getPixelRatio());
+    renderPass = new RenderPass(scene, activeCam);
+    gtaoPass = new GTAOPass(scene, activeCam, 512, 512);
+    gtaoPass.output = GTAOPass.OUTPUT.Default;
+    gtaoPass.blendIntensity = 0.62;
+    gtaoPass.updateGtaoMaterial({
+      radius: 28,
+      distanceExponent: 1.5,
+      thickness: 0.7,
+      scale: 1,
+      samples: 12
+    });
+    gtaoPass.updatePdMaterial({
+      lumaPhi: 10,
+      depthPhi: 2,
+      normalPhi: 3,
+      radius: 4,
+      rings: 2,
+      samples: 8
+    });
+    outputPass = new OutputPass();
+    composer.addPass(renderPass);
+    composer.addPass(gtaoPass);
+    composer.addPass(outputPass);
+  } catch {
+    composer = null;
+  }
+
   const orbit = new OrbitControls(activeCam, canvas);
   orbit.enablePan = false;
+  orbit.enableZoom = false; // Handled smoothly via custom capture-phase trackpad/wheel/gesture zoom on container.
   orbit.enableDamping = !reducedMotion;
   orbit.dampingFactor = 0.09;
   orbit.minPolarAngle = 0.0001;
@@ -474,6 +737,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   orbit.minZoom = 0.3;
   orbit.maxZoom = 8;
   orbit.zoomSpeed = 0.85;
+  orbit.touches = { ONE: T.TOUCH.ROTATE, TWO: T.TOUCH.DOLLY_ROTATE };
 
   const furnitureRoot = new T.Group(), person = makeMannequin();
   scene.add(furnitureRoot, person.root);
@@ -481,7 +745,17 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   const joints = new Map(spec.joints.map(def => {
     const group = new T.Group();
     furnitureRoot.add(group);
-    return [def.id, { def, group, pivot: [0, 0, 0], current: 0, target: 0, from: 0, startTime: 0, duration: 0, initialized: false }];
+    return [def.id, {
+      id: def.id,
+      label: def.label,
+      def,
+      group,
+      pivot: [0, 0, 0],
+      current: 0,
+      target: 0,
+      velocity: 0,
+      initialized: false
+    }];
   }));
 
   const ellipsoid = new T.SphereGeometry(0.5, 40, 24);
@@ -527,7 +801,8 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
       grain: (index * 0.754877666) % 1,
       ledColor: null,
       ledIntensity: 0,
-      hovered: false
+      hovered: false,
+      contactFlash: 0
     };
     partMap.set(def.id, part);
 
@@ -585,18 +860,18 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   }
   const platePoints = plate ? Array.from({ length: 4 }, vector) : [];
 
-  // Interactive 3D hotspot pins overlay
+  // Interactive 3D hotspot pins overlay (off by default; toggleable from toolbar)
   const hotspotLayer = document.createElement('div');
   hotspotLayer.className = 'hotspot-layer';
   container.appendChild(hotspotLayer);
-  let hotspotsEnabled = spec.joints.length > 0 || (spec.switches?.length ?? 0) > 0;
+  let hotspotsEnabled = false;
   const hotspotNodes = [];
   for (const j of joints.values()) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'hotspot hotspot-joint';
     btn.innerHTML = '<span class="hotspot-dot" aria-hidden="true"></span><span class="hotspot-tag"></span>';
-    btn.querySelector('.hotspot-tag').textContent = j.def.label;
+    btn.querySelector('.hotspot-tag').textContent = locale.term(j.def.label);
     btn.addEventListener('click', e => {
       e.stopPropagation();
       callbacks.onInteract?.({ type: 'joint', id: j.def.id, label: j.def.label });
@@ -609,7 +884,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     btn.type = 'button';
     btn.className = 'hotspot hotspot-switch';
     btn.innerHTML = '<span class="hotspot-dot" aria-hidden="true"></span><span class="hotspot-tag"></span>';
-    btn.querySelector('.hotspot-tag').textContent = sw.def.label;
+    btn.querySelector('.hotspot-tag').textContent = locale.term(sw.def.label);
     btn.addEventListener('click', e => {
       e.stopPropagation();
       callbacks.onInteract?.({ type: 'switch', id: sw.def.id, label: sw.def.label });
@@ -618,15 +893,17 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     hotspotNodes.push({ kind: 'switch', id: sw.def.id, entry: sw, btn, pos: vector(), ndc: vector() });
   }
 
-  const guides = measureOverlay(container);
+  const guides = measureOverlay(container, locale);
   const staticFurnitureBounds = new T.Box3(), liveFurnitureBounds = new T.Box3();
   const personBounds = new T.Box3(), staticBounds = new T.Box3(), shadowBounds = new T.Box3();
   const personCorners = corners(), focus = vector(), direction = vector(), delta = vector(), right = vector(), up = vector(), forward = vector();
   const spherical = new T.Spherical();
-  let width = 0, height = 0, raf = 0, ready = false, showGuides = false, dims = null, personGeometry = null;
+  let width = 0, height = 0, raf = 0, ready = false, showGuides = false, dims = null, optionsCache = null, personGeometry = null;
   let projectionDirty = true, baseDist = 3000;
   let camAnim = null;
   let activeHoverAction = null;
+  let lastFrameTime = 0;
+  let zoomFactorPending = 1;
 
   function applyJointTransform(j, p) {
     j.group.position.fromArray(j.pivot);
@@ -639,15 +916,37 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     else if (j.def.type === 'lift') j.group.position.y += amount;
   }
 
+  function liveJointPositions() {
+    const out = {};
+    for (const j of joints.values()) out[j.id] = j.current;
+    return out;
+  }
+
+  function triggerBlockerFlash(collision) {
+    if (reducedMotion) return;
+    const targets = collision.blockerJointId
+      ? parts.filter(p => p.joint?.id === collision.blockerJointId && p.anchor.visible)
+      : parts.filter(p => p.def.id === collision.blockerPartId && p.anchor.visible);
+    const expires = performance.now() + 260;
+    for (const part of targets) {
+      part.contactFlash = expires;
+      syncPartEmissive(part);
+    }
+  }
+
   function applySwitchState(sw, p) {
     const anyVisible = sw.actuatorParts.some(part => part.anchor.visible) || sw.emissiveParts.some(part => part.anchor.visible);
+    const boost = lighting.getLightBoost();
+    const kelvinPreset = LED_TEMPS[ledTempId] || LED_TEMPS['3500'];
     if (sw.light) {
-      sw.light.intensity = anyVisible ? sw.def.light.intensity * Math.pow(200, 1.5) * p : 0;
+      sw.light.color.set(kelvinPreset.color);
+      sw.light.intensity = anyVisible ? sw.def.light.intensity * Math.pow(200, 1.5) * boost * p : 0;
     }
-    const glowColor = sw.def.light ? new T.Color(sw.def.light.color) : null;
+    const glowColor = sw.def.light ? new T.Color(kelvinPreset.emissive) : null;
+    const emissiveMult = 3.2 * (1 + (boost - 1) * 0.45);
     for (const part of sw.emissiveParts) {
       part.ledColor = glowColor;
-      part.ledIntensity = 3.2 * p;
+      part.ledIntensity = emissiveMult * p;
       syncPartEmissive(part);
     }
     for (const part of sw.actuatorParts) {
@@ -666,7 +965,91 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     }
   }
 
-  function syncPartEmissive(part) {
+  function refreshSwitches() {
+    for (const sw of switches.values()) applySwitchState(sw, sw.current);
+  }
+
+  const isXrayFront = part => part?.joint?.def.type === 'hinge' || part?.joint?.def.type === 'flap';
+  const hasXrayTargets = parts.some(isXrayFront);
+  const xrayWireMat = new T.LineBasicMaterial({ color: 0x3b4d42, transparent: true, opacity: 0.42, depthWrite: false });
+
+  function clearPartXrayWire(visual) {
+    visual.traverse(obj => {
+      for (let i = obj.children.length - 1; i >= 0; i--) {
+        const child = obj.children[i];
+        if (child.userData?.isXrayWire) {
+          obj.remove(child);
+          child.geometry.dispose();
+        }
+      }
+    });
+  }
+
+  function applyXrayState(active) {
+    for (const part of parts) {
+      const ghost = active && isXrayFront(part);
+      clearPartXrayWire(part.visual);
+      part.visual.traverse(obj => {
+        if (!obj.isMesh || !obj.material) return;
+        const m = obj.material;
+        if (m.userData.xrayOrig === undefined) {
+          m.userData.xrayOrig = {
+            transparent: Boolean(m.transparent),
+            opacity: m.opacity ?? 1,
+            depthWrite: m.depthWrite ?? true,
+            castShadow: obj.castShadow,
+            receiveShadow: obj.receiveShadow
+          };
+        }
+        const orig = m.userData.xrayOrig;
+        if (ghost) {
+          m.userData.xrayApplied = true;
+          m.transparent = true;
+          m.opacity = 0.16;
+          m.depthWrite = false;
+          m.needsUpdate = true;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+          if ((part.def.shape === 'box' || part.def.shape === 'cylinder') && obj.geometry?.attributes?.position?.count) {
+            const edges = new T.EdgesGeometry(obj.geometry, 28);
+            const lines = new T.LineSegments(edges, xrayWireMat);
+            lines.userData.isXrayWire = true;
+            lines.raycast = () => {};
+            obj.add(lines);
+          }
+        } else {
+          m.transparent = orig.transparent;
+          m.opacity = orig.opacity;
+          m.depthWrite = orig.depthWrite;
+          m.needsUpdate = true;
+          obj.castShadow = orig.castShadow;
+          obj.receiveShadow = orig.receiveShadow;
+          delete m.userData.xrayApplied;
+          delete m.userData.xrayOrig;
+        }
+      });
+    }
+  }
+
+  function updateAoClipBox() {
+    if (!gtaoPass) return;
+    if (liveFurnitureBounds.isEmpty()) {
+      gtaoPass.setSceneClipBox(null);
+      return;
+    }
+    aoClipBox.copy(liveFurnitureBounds);
+    if (person.root.visible && !personBounds.isEmpty()) aoClipBox.union(personBounds);
+    aoClipBox.min.x -= 80;
+    aoClipBox.max.x += 80;
+    aoClipBox.min.z -= 80;
+    aoClipBox.max.z += 80;
+    aoClipBox.max.y += 80;
+    aoClipBox.min.y = backdropMode === 'room' ? -4 : 0.5;
+    gtaoPass.setSceneClipBox(aoClipBox);
+  }
+
+  function syncPartEmissive(part, now = performance.now()) {
+    const flashing = part.contactFlash > now;
     part.visual.traverse(obj => {
       if (!obj.isMesh || !obj.material || !('emissive' in obj.material)) return;
       if (obj.material.userData.baseEmissive === undefined) {
@@ -676,9 +1059,12 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
       if (part.ledColor && part.ledIntensity > 0.001) {
         obj.material.emissive.copy(part.ledColor);
         obj.material.emissiveIntensity = part.ledIntensity + (part.hovered ? 0.25 : 0);
+      } else if (flashing) {
+        obj.material.emissive.setHex(0xe59d3c);
+        obj.material.emissiveIntensity = 0.22;
       } else if (part.hovered) {
-        obj.material.emissive.setHex(0xfff4de);
-        obj.material.emissiveIntensity = 0.08;
+        obj.material.emissive.setHex(0x3b7a5e);
+        obj.material.emissiveIntensity = 0.22;
       } else {
         obj.material.emissive.setHex(obj.material.userData.baseEmissive);
         obj.material.emissiveIntensity = obj.material.userData.baseEmissiveIntensity;
@@ -704,6 +1090,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     if (shadowBounds.isEmpty() || showGuides) for (const v of guides.endpoints) shadowBounds.expandByPoint(v);
     if (person.root.visible && !personBounds.isEmpty()) shadowBounds.union(personBounds);
     lighting.updateShadowBounds(shadowBounds, liveFurnitureBounds, parts, person.root.visible, personBounds);
+    updateAoClipBox();
   }
 
   function computeProjectionMetrics(useBounds) {
@@ -778,9 +1165,9 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
           tempBox.getCenter(node.pos);
           if (!hardware.length) node.pos.z = tempBox.max.z;
         }
-        const pct = Math.round(j.target * 100);
-        node.btn.setAttribute('aria-pressed', String(j.target > 0.02));
-        node.btn.setAttribute('aria-label', `${j.def.label}: ${j.target > 0.02 ? `Open (${pct}%), click to close` : 'Closed, click to open'}`);
+        const pct = Math.round(j.current * 100);
+        node.btn.setAttribute('aria-pressed', String(j.current > 0.02));
+        node.btn.setAttribute('aria-label', locale.formatHotspot('joint', locale.term(j.def.label), j.current));
       } else {
         const sw = node.entry;
         const targets = sw.actuatorParts.filter(p => p.anchor.visible);
@@ -794,7 +1181,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
         }
         const isOn = sw.target >= 0.5;
         node.btn.setAttribute('aria-pressed', String(isOn));
-        node.btn.setAttribute('aria-label', `${sw.def.label}: ${isOn ? 'On, click to turn off' : 'Off, click to turn on'}`);
+        node.btn.setAttribute('aria-label', locale.formatHotspot('switch', locale.term(sw.def.label), sw.target));
       }
       node.btn.hidden = !visible;
       if (!visible) continue;
@@ -806,21 +1193,532 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     }
   }
 
-  function stepAnimations(now) {
-    let active = false;
+  function applyZoomStep(factor) {
+    if (!Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-6) return;
+    if (projectionMode === 'orthographic') {
+      orthoCam.zoom = clamp(orthoCam.zoom * factor, orbit.minZoom, orbit.maxZoom);
+      orthoCam.updateProjectionMatrix();
+    } else {
+      direction.subVectors(perspCam.position, orbit.target);
+      const dist = clamp(direction.length() / factor, orbit.minDistance, orbit.maxDistance);
+      direction.normalize();
+      perspCam.position.copy(orbit.target).addScaledVector(direction, dist);
+    }
+    orbit.update();
+    projectionDirty = true;
+  }
+
+  function queueZoom(factor) {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    camAnim = null;
+    if (reducedMotion || !ready) {
+      applyZoomStep(factor);
+      schedule();
+      return;
+    }
+    zoomFactorPending = clamp(zoomFactorPending * factor, 0.25, 4);
+    schedule();
+  }
+
+  const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const lerpAngle = (cur, target, t) => cur + wrapAngle(target - cur) * t;
+
+  const personActor = {
+    running: false,
+    hasMoved: false,
+    phase: 'stopped',
+    waitTimer: 0,
+    phaseTime: 0,
+    path: [],
+    pathIdx: 0,
+    currentAction: null,
+    actionFired: false,
+    lastActionId: null,
+    walkPhase: 0,
+    walkBlend: 0,
+    sitBlend: 0,
+    seatHeightNorm: 0,
+    reachBlend: 0,
+    reachSide: 1,
+    reachHeightNorm: 0.55,
+    headYaw: 0,
+    headPitch: 0,
+    idleTime: 0,
+    seatedSeat: null,
+    posX: 0,
+    posZ: 0,
+    yaw: 0
+  };
+
+  function collectWorldPartBoxes() {
+    const boxes = [];
+    for (const p of parts) {
+      if (!p.anchor.visible) continue;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const v of p.points) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      }
+      const slot = slotMap.get(p.def.slot);
+      boxes.push({
+        id: p.def.id,
+        slotId: p.def.slot,
+        slotLabel: slot?.label || '',
+        jointId: p.joint?.id ?? null,
+        minX, maxX, minY, maxY, minZ, maxZ
+      });
+    }
+    return boxes;
+  }
+
+  function buildPersonCandidates() {
+    const allBoxes = collectWorldPartBoxes();
+    const staticBoxes = allBoxes.filter(b => !b.jointId);
+    const byJoint = new Map();
+    for (const b of allBoxes) {
+      if (!b.jointId) continue;
+      const arr = byJoint.get(b.jointId) || [];
+      arr.push(b);
+      byJoint.set(b.jointId, arr);
+    }
+    const byPartId = new Map(allBoxes.map(b => [b.id, b]));
+    const posMap = liveJointPositions();
+    const candidates = [];
+
     for (const j of joints.values()) {
-      if (Math.abs(j.current - j.target) > 0.0005) {
-        const elapsed = now - j.startTime;
-        const t = j.duration > 0 ? clamp(elapsed / j.duration, 0, 1) : 1;
-        const eased = 1 - Math.pow(1 - t, 3.5);
-        j.current = t >= 1 ? j.target : j.from + (j.target - j.from) * eased;
-        applyJointTransform(j, j.current);
-        active = true;
-      } else if (j.current !== j.target) {
-        j.current = j.target;
-        applyJointTransform(j, j.current);
+      const tBoxes = byJoint.get(j.id);
+      if (!tBoxes?.length) continue;
+      const goal = j.current > 0.45 ? 0 : 1;
+      const res = kinematics.resolveJointMotion(j.id, j.current, goal, posMap);
+      if (Math.abs(res.progress - j.current) <= 0.12) continue;
+      const target = computeInteractionTarget({
+        kind: 'joint',
+        id: j.id,
+        label: j.label,
+        def: j.def,
+        targetBoxes: tBoxes,
+        staticBoxes,
+        pivot: j.pivot
+      });
+      if (target) candidates.push({ ...target, goal, isOpening: goal > 0.5 });
+    }
+
+    for (const sw of switches.values()) {
+      const tBoxes = [...sw.actuatorParts, ...sw.emissiveParts]
+        .map(p => byPartId.get(p.def.id))
+        .filter(Boolean);
+      if (!tBoxes.length) continue;
+      const goal = sw.target >= 0.5 ? 0 : 1;
+      const target = computeInteractionTarget({
+        kind: 'switch',
+        id: sw.def.id,
+        label: sw.def.label,
+        def: null,
+        targetBoxes: tBoxes,
+        staticBoxes
+      });
+      if (target) candidates.push({ ...target, goal, isOpening: goal > 0.5 });
+    }
+
+    const seats = detectSeats(spec, staticBoxes);
+    for (const seat of seats) {
+      if (personActor.seatedSeat?.id === seat.id) {
+        candidates.push({
+          kind: 'stand',
+          id: `stand:${seat.id}`,
+          label: seat.label,
+          seat,
+          standX: seat.approachX,
+          standZ: seat.approachZ,
+          faceYaw: seat.faceYaw,
+          tx: seat.seatX,
+          ty: seat.seatY,
+          tz: seat.seatZ,
+          reachY: seat.seatY
+        });
+      } else {
+        candidates.push({
+          kind: 'sit',
+          id: `sit:${seat.id}`,
+          label: seat.label,
+          seat,
+          standX: seat.approachX,
+          standZ: seat.approachZ,
+          faceYaw: seat.faceYaw,
+          tx: seat.seatX,
+          ty: seat.seatY,
+          tz: seat.seatZ,
+          reachY: seat.seatY
+        });
       }
     }
+
+    if (!candidates.length && !staticFurnitureBounds.isEmpty()) {
+      const b = staticFurnitureBounds;
+      const fx = (b.min.x + b.max.x) * 0.5;
+      const fy = (b.min.y + b.max.y) * 0.5;
+      const fz = (b.min.z + b.max.z) * 0.5;
+      for (const [id, sx, sz] of [
+        ['inspect:front', fx, b.max.z + 620],
+        ['inspect:right', b.max.x + 620, fz],
+        ['inspect:left', b.min.x - 620, fz]
+      ]) {
+        candidates.push({
+          kind: 'inspect',
+          id,
+          label: spec.name,
+          tx: fx,
+          ty: fy,
+          tz: fz,
+          standX: sx,
+          standZ: sz,
+          faceYaw: Math.atan2(fx - sx, fz - sz),
+          reachY: fy
+        });
+      }
+    }
+
+    return { candidates, staticBoxes };
+  }
+
+  function currentMotionPayload() {
+    return {
+      walkPhase: personActor.walkPhase,
+      walkBlend: personActor.walkBlend,
+      sitBlend: personActor.sitBlend,
+      seatHeightNorm: personActor.seatHeightNorm,
+      reachBlend: personActor.reachBlend,
+      reachSide: personActor.reachSide,
+      reachHeightNorm: personActor.reachHeightNorm,
+      headYaw: personActor.headYaw,
+      headPitch: personActor.headPitch,
+      idleTime: personActor.idleTime
+    };
+  }
+
+  function syncPersonBoundsFromRoot() {
+    if (!person.root.visible) return;
+    person.root.updateMatrixWorld(true);
+    personBounds.setFromObject(person.root);
+    for (let i = 0; i < 8; i++) {
+      personCorners[i].set(
+        i & 1 ? personBounds.max.x : personBounds.min.x,
+        i & 2 ? personBounds.max.y : personBounds.min.y,
+        i & 4 ? personBounds.max.z : personBounds.min.z
+      );
+    }
+    shadowBounds.copy(liveFurnitureBounds);
+    if (!personBounds.isEmpty()) shadowBounds.union(personBounds);
+    lighting.updateShadowBounds(shadowBounds, liveFurnitureBounds, parts, person.root.visible, personBounds);
+    updateAoClipBox();
+  }
+
+  function stepPersonActor(dt) {
+    const needsSettle = personActor.walkBlend > 0.002 || personActor.reachBlend > 0.002;
+    if (!personActor.running && !needsSettle) return false;
+    if (!person.root.visible) {
+      if (personActor.running) setPersonAutoRun(false);
+      return false;
+    }
+
+    personActor.idleTime += dt;
+    const h = Math.max(900, personGeometry?.height || 1700);
+
+    if (!personActor.running) {
+      personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 6);
+      personActor.reachBlend = Math.max(0, personActor.reachBlend - dt * 6);
+      personActor.headYaw *= Math.max(0, 1 - dt * 6);
+      personActor.headPitch *= Math.max(0, 1 - dt * 6);
+      person.setMotion?.(currentMotionPayload());
+      syncPersonBoundsFromRoot();
+      return personActor.walkBlend > 0.002 || personActor.reachBlend > 0.002;
+    }
+
+    const enterWaiting = () => {
+      personActor.phase = 'idle_wait';
+      personActor.currentAction = null;
+      personActor.waitTimer = DEFAULT_ACTION_DELAY_MS / 1000;
+      personActor.phaseTime = 0;
+      callbacks.onPersonAutoAction?.({
+        phase: 'waiting',
+        nextDelaySec: Math.round(DEFAULT_ACTION_DELAY_MS / 1000)
+      });
+    };
+
+    if (personActor.phase === 'idle_wait') {
+      personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 5);
+      personActor.reachBlend = Math.max(0, personActor.reachBlend - dt * 5);
+      personActor.headYaw = Math.sin(personActor.idleTime * 0.7) * 0.14;
+      personActor.headPitch = Math.sin(personActor.idleTime * 0.45) * 0.05;
+      personActor.waitTimer -= dt;
+      if (personActor.waitTimer <= 0) {
+        const { candidates, staticBoxes } = buildPersonCandidates();
+        const next = pickNextPersonAction({
+          candidates,
+          lastActionId: personActor.lastActionId,
+          isSeated: Boolean(personActor.seatedSeat)
+        });
+        if (!next) {
+          personActor.waitTimer = DEFAULT_ACTION_DELAY_MS / 1000;
+        } else {
+          personActor.currentAction = next;
+          personActor.actionFired = false;
+          personActor.lastActionId = next.id;
+          personActor.phaseTime = 0;
+          if (personActor.seatedSeat) {
+            personActor.phase = 'standing_up';
+          } else if (next.kind === 'stand') {
+            enterWaiting();
+          } else {
+            personActor.path = planFloorPath([personActor.posX, personActor.posZ], [next.standX, next.standZ], staticBoxes);
+            personActor.pathIdx = 0;
+            const d0 = Math.hypot(next.standX - personActor.posX, next.standZ - personActor.posZ);
+            personActor.phase = d0 < 24 ? 'turning' : 'walking';
+          }
+        }
+      }
+    } else if (personActor.phase === 'standing_up') {
+      const seat = personActor.seatedSeat;
+      if (!seat) {
+        personActor.phase = 'walking';
+      } else {
+        const dur = 0.65;
+        personActor.phaseTime = Math.min(dur, personActor.phaseTime + dt);
+        const u = personActor.phaseTime / dur;
+        const smooth = u * u * (3 - 2 * u);
+        personActor.sitBlend = 1 - smooth;
+        personActor.posX = seat.seatX + (seat.approachX - seat.seatX) * smooth;
+        personActor.posZ = seat.seatZ + (seat.approachZ - seat.seatZ) * smooth;
+        personActor.hasMoved = true;
+        if (personActor.phaseTime >= dur) {
+          personActor.sitBlend = 0;
+          personActor.seatHeightNorm = 0;
+          personActor.seatedSeat = null;
+          callbacks.onPersonAutoAction?.({
+            phase: 'action',
+            actionType: 'stand',
+            id: seat.id,
+            label: seat.label
+          });
+          if (personActor.currentAction?.kind === 'stand') {
+            enterWaiting();
+          } else {
+            const { staticBoxes } = buildPersonCandidates();
+            personActor.path = planFloorPath(
+              [personActor.posX, personActor.posZ],
+              [personActor.currentAction.standX, personActor.currentAction.standZ],
+              staticBoxes
+            );
+            personActor.pathIdx = 0;
+            personActor.phase = 'walking';
+            personActor.phaseTime = 0;
+          }
+        }
+      }
+    } else if (personActor.phase === 'walking') {
+      const wp = personActor.path[personActor.pathIdx];
+      if (!wp) {
+        personActor.phase = 'turning';
+        personActor.phaseTime = 0;
+      } else {
+        const dx = wp[0] - personActor.posX;
+        const dz = wp[1] - personActor.posZ;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 18) {
+          personActor.pathIdx++;
+          if (personActor.pathIdx >= personActor.path.length) {
+            personActor.phase = 'turning';
+            personActor.phaseTime = 0;
+          }
+        } else {
+          const step = Math.min(dist, 760 * dt);
+          personActor.posX += (dx / dist) * step;
+          personActor.posZ += (dz / dist) * step;
+          personActor.hasMoved = true;
+          const heading = Math.atan2(dx, dz);
+          personActor.yaw = lerpAngle(personActor.yaw, heading, Math.min(1, dt * 8));
+          personActor.walkPhase += (step / (h * 0.34)) * Math.PI;
+          personActor.walkBlend = Math.min(1, personActor.walkBlend + dt * 5);
+          if (personActor.currentAction) {
+            const aimYaw = Math.atan2(personActor.currentAction.tx - personActor.posX, personActor.currentAction.tz - personActor.posZ);
+            personActor.headYaw = clamp(wrapAngle(aimYaw - personActor.yaw), -0.55, 0.55);
+            personActor.headPitch = clamp((personActor.currentAction.ty - h * 0.85) / 1500, -0.3, 0.25);
+          }
+        }
+      }
+    } else if (personActor.phase === 'turning') {
+      personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 6);
+      const act = personActor.currentAction;
+      if (!act) {
+        enterWaiting();
+      } else {
+        personActor.yaw = lerpAngle(personActor.yaw, act.faceYaw, Math.min(1, dt * 7));
+        personActor.headYaw = clamp(wrapAngle(act.faceYaw - personActor.yaw), -0.6, 0.6);
+        personActor.headPitch = clamp((act.ty - h * 0.85) / 1400, -0.35, 0.3);
+        if (Math.abs(wrapAngle(act.faceYaw - personActor.yaw)) < 0.04) {
+          personActor.yaw = act.faceYaw;
+          personActor.headYaw = 0;
+          personActor.phase = 'acting';
+          personActor.phaseTime = 0;
+          personActor.actionFired = false;
+          const lx = (act.tx - personActor.posX) * Math.cos(personActor.yaw) - (act.tz - personActor.posZ) * Math.sin(personActor.yaw);
+          personActor.reachSide = lx >= 0 ? 1 : -1;
+          personActor.reachHeightNorm = (act.reachY ?? h * 0.55) / h;
+        }
+      }
+    } else if (personActor.phase === 'acting') {
+      const act = personActor.currentAction;
+      if (!act) {
+        enterWaiting();
+      } else {
+        personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
+        personActor.phaseTime += dt;
+        if (act.kind === 'sit') {
+          const seat = act.seat;
+          const dur = 0.9;
+          const u = clamp(personActor.phaseTime / dur, 0, 1);
+          const smooth = u * u * (3 - 2 * u);
+          personActor.posX = seat.approachX + (seat.seatX - seat.approachX) * smooth;
+          personActor.posZ = seat.approachZ + (seat.seatZ - seat.approachZ) * smooth;
+          personActor.yaw = lerpAngle(personActor.yaw, seat.faceYaw, Math.min(1, dt * 8));
+          personActor.sitBlend = smooth;
+          personActor.seatHeightNorm = seat.seatY / h;
+          personActor.hasMoved = true;
+          if (personActor.phaseTime >= 0.45 && !personActor.actionFired) {
+            personActor.actionFired = true;
+            personActor.seatedSeat = seat;
+            callbacks.onPersonAutoAction?.({
+              phase: 'action',
+              actionType: 'sit',
+              id: seat.id,
+              label: act.label
+            });
+          }
+          if (personActor.phaseTime >= dur) enterWaiting();
+        } else if (act.kind === 'joint' || act.kind === 'switch') {
+          const dur = 1.0;
+          const u = clamp(personActor.phaseTime / dur, 0, 1);
+          personActor.reachBlend = Math.sin(u * Math.PI);
+          if (personActor.phaseTime >= 0.45 && !personActor.actionFired) {
+            personActor.actionFired = true;
+            callbacks.onPersonAutoAction?.({
+              phase: 'action',
+              actionType: act.kind,
+              id: act.id,
+              label: act.label,
+              goal: act.goal,
+              isOpening: act.isOpening
+            });
+          }
+          if (personActor.phaseTime >= dur) {
+            personActor.reachBlend = 0;
+            enterWaiting();
+          }
+        } else {
+          const dur = 1.3;
+          personActor.headYaw = Math.sin((personActor.phaseTime / dur) * Math.PI * 2) * 0.28;
+          if (personActor.phaseTime >= 0.35 && !personActor.actionFired) {
+            personActor.actionFired = true;
+            callbacks.onPersonAutoAction?.({
+              phase: 'action',
+              actionType: 'inspect',
+              id: act.id,
+              label: act.label
+            });
+          }
+          if (personActor.phaseTime >= dur) {
+            personActor.headYaw = 0;
+            enterWaiting();
+          }
+        }
+      }
+    }
+
+    person.root.position.set(personActor.posX, 0, personActor.posZ);
+    person.root.rotation.y = personActor.yaw;
+    person.setMotion?.(currentMotionPayload());
+    syncPersonBoundsFromRoot();
+    return true;
+  }
+
+  function setPersonAutoRun(run) {
+    const next = Boolean(run);
+    if (next) {
+      personActor.posX = person.root.position.x;
+      personActor.posZ = person.root.position.z;
+      personActor.yaw = person.root.rotation.y;
+      if (personGeometry?.pose !== 'seated') {
+        personActor.sitBlend = 0;
+        personActor.seatHeightNorm = 0;
+        personActor.seatedSeat = null;
+      } else {
+        personActor.sitBlend = 1;
+      }
+      personActor.running = true;
+      personActor.phase = 'idle_wait';
+      personActor.waitTimer = 0.25;
+      personActor.phaseTime = 0;
+      personActor.currentAction = null;
+      schedule();
+    } else {
+      personActor.running = false;
+      personActor.phase = 'stopped';
+      personActor.currentAction = null;
+      callbacks.onPersonAutoAction?.({ phase: 'stopped' });
+      schedule();
+    }
+  }
+
+  function resetPersonPosition() {
+    personActor.running = false;
+    personActor.hasMoved = false;
+    personActor.phase = 'stopped';
+    personActor.currentAction = null;
+    personActor.seatedSeat = null;
+    personActor.walkBlend = 0;
+    personActor.reachBlend = 0;
+    personActor.sitBlend = personGeometry?.pose === 'seated' ? 1 : 0;
+    personActor.seatHeightNorm = 0;
+    person.setMotion?.(null);
+    if (personGeometry) updateLayout(personGeometry);
+    schedule();
+  }
+
+  function stepAnimations(now, dt) {
+    let active = false;
+    let cornersNeedUpdate = false;
+
+    if (stepPersonActor(dt)) active = true;
+
+    const phys = stepPhysicsSubstep(kinematics, joints, dt);
+    if (phys.moved) {
+      for (const j of joints.values()) applyJointTransform(j, j.current);
+      cornersNeedUpdate = true;
+    }
+    if (phys.collisions.length) {
+      for (const col of phys.collisions) {
+        triggerBlockerFlash(col);
+        callbacks.onJointBlocked?.(col);
+      }
+    }
+    if (phys.animating) active = true;
+
+    for (const part of parts) {
+      if (part.contactFlash > 0) {
+        if (now >= part.contactFlash) {
+          part.contactFlash = 0;
+          syncPartEmissive(part, now);
+        } else {
+          active = true;
+        }
+      }
+    }
+
     for (const sw of switches.values()) {
       if (Math.abs(sw.current - sw.target) > 0.0005) {
         const elapsed = now - sw.startTime;
@@ -834,6 +1732,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
         applySwitchState(sw, sw.current);
       }
     }
+
     if (camAnim) {
       const t = camAnim.duration > 0 ? clamp((now - camAnim.startTime) / camAnim.duration, 0, 1) : 1;
       const eased = 1 - Math.pow(1 - t, 3);
@@ -844,10 +1743,25 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
         orthoCam.zoom = camAnim.fromZoom + (camAnim.toZoom - camAnim.fromZoom) * eased;
       }
       orbit.update();
+      projectionDirty = true;
       if (t >= 1) camAnim = null;
       else active = true;
     }
-    if (active) {
+
+    if (Math.abs(zoomFactorPending - 1) > 0.0005) {
+      const alpha = reducedMotion ? 1 : Math.min(1, dt * 16);
+      const step = Math.pow(zoomFactorPending, alpha);
+      applyZoomStep(step);
+      zoomFactorPending /= step;
+      if (Math.abs(zoomFactorPending - 1) <= 0.0005) {
+        applyZoomStep(zoomFactorPending);
+        zoomFactorPending = 1;
+      } else {
+        active = true;
+      }
+    }
+
+    if (cornersNeedUpdate) {
       updatePartLiveCorners();
       projectionDirty = true;
     }
@@ -857,11 +1771,15 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   function render(now = performance.now()) {
     raf = 0;
     if (!ready || !width || !height) return;
-    const animating = stepAnimations(now);
+    const dt = lastFrameTime ? clamp((now - lastFrameTime) / 1000, 0.001, 0.05) : 1 / 60;
+    lastFrameTime = now;
+    const animating = stepAnimations(now, dt);
     const damped = orbit.enableDamping ? orbit.update() : false;
     if (projectionDirty) fitProjection();
-    renderer.render(scene, activeCam);
+    if (composer && aoEnabled && !xrayEnabled) composer.render();
+    else renderer.render(scene, activeCam);
     if (animating || damped) schedule();
+    else lastFrameTime = 0;
   }
 
   function schedule() {
@@ -882,6 +1800,10 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     width = w; height = h;
     if (w && h) {
       renderer.setSize(w, h, false);
+      if (composer) {
+        composer.setPixelRatio(renderer.getPixelRatio());
+        composer.setSize(w, h);
+      }
       if (projectionMode === 'perspective' && ready) {
         const { reqHalfH, hz } = computeProjectionMetrics('static');
         baseDist = reqHalfH / Math.tan(rad(perspCam.fov * 0.5)) + hz * 0.55;
@@ -896,13 +1818,64 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
   }
 
   orbit.addEventListener('change', cameraChanged);
-  orbit.addEventListener('start', () => { camAnim = null; });
+  orbit.addEventListener('start', () => { camAnim = null; zoomFactorPending = 1; });
   new ResizeObserver(resize).observe(container);
   resize();
 
   function positionPart(anchor, center, joint) {
     anchor.position.fromArray(center);
     if (joint) { const p = joint.pivot; anchor.position.x -= p[0]; anchor.position.y -= p[1]; anchor.position.z -= p[2]; }
+  }
+
+  function applyCoplanarOffsetMitigation() {
+    const boxes = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      part.visual.traverse(obj => {
+        if (!obj.isMesh || !obj.material) return;
+        obj.material.polygonOffset = false;
+        obj.material.polygonOffsetFactor = 0;
+        obj.material.polygonOffsetUnits = 0;
+      });
+      if (!part.anchor.visible) continue;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const v of part.points) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      }
+      const vol = Math.max(1, (maxX - minX) * (maxY - minY) * (maxZ - minZ));
+      boxes.push({ idx: i, part, minX, maxX, minY, maxY, minZ, maxZ, vol });
+    }
+    const tiers = new Map();
+    for (let i = 0; i < boxes.length; i++) {
+      const A = boxes[i];
+      for (let j = i + 1; j < boxes.length; j++) {
+        const B = boxes[j];
+        const ox = Math.min(A.maxX, B.maxX) - Math.max(A.minX, B.minX);
+        const oy = Math.min(A.maxY, B.maxY) - Math.max(A.minY, B.minY);
+        const oz = Math.min(A.maxZ, B.maxZ) - Math.max(A.minZ, B.minZ);
+        if (ox <= 0.25 || oy <= 0.25 || oz <= 0.25) continue;
+        const coplanar =
+          Math.abs(A.minX - B.minX) < 0.5 || Math.abs(A.maxX - B.maxX) < 0.5 ||
+          Math.abs(A.minY - B.minY) < 0.5 || Math.abs(A.maxY - B.maxY) < 0.5 ||
+          Math.abs(A.minZ - B.minZ) < 0.5 || Math.abs(A.maxZ - B.maxZ) < 0.5;
+        if (!coplanar) continue;
+        const target = A.vol <= B.vol ? A.part : B.part;
+        const nextTier = (tiers.get(target) ?? 0) + 1;
+        tiers.set(target, nextTier);
+        target.visual.traverse(obj => {
+          if (!obj.isMesh || !obj.material) return;
+          obj.material.polygonOffset = true;
+          obj.material.polygonOffsetFactor = -(nextTier * 0.75);
+          obj.material.polygonOffsetUnits = -(nextTier * 1.5);
+        });
+      }
+    }
   }
 
   function updateLayout(p) {
@@ -928,13 +1901,23 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
 
     personBounds.makeEmpty();
     if (p.visible) {
-      person.root.position.set(0, 0, 0);
-      personBounds.setFromObject(person.root);
-      const gap = p.height * 0.09;
-      const offset = p.side === 'right' ? staticBounds.max.x + gap - personBounds.min.x : staticBounds.min.x - gap - personBounds.max.x;
-      person.root.position.x = offset;
-      personBounds.min.x += offset; personBounds.max.x += offset;
-      staticBounds.union(personBounds);
+      if (!personActor.running && !personActor.hasMoved) {
+        person.root.position.set(0, 0, 0);
+        personBounds.setFromObject(person.root);
+        const gap = p.height * 0.09;
+        const offset = p.side === 'right' ? staticBounds.max.x + gap - personBounds.min.x : staticBounds.min.x - gap - personBounds.max.x;
+        person.root.position.x = offset;
+        personActor.posX = offset;
+        personActor.posZ = 0;
+        personActor.yaw = person.root.rotation.y;
+        personBounds.min.x += offset; personBounds.max.x += offset;
+        staticBounds.union(personBounds);
+      } else {
+        person.root.position.set(personActor.posX, 0, personActor.posZ);
+        person.root.rotation.y = personActor.yaw;
+        person.root.updateMatrixWorld(true);
+        personBounds.setFromObject(person.root);
+      }
       for (let i = 0; i < 8; i++) personCorners[i].set(
         i & 1 ? personBounds.max.x : personBounds.min.x,
         i & 2 ? personBounds.max.y : personBounds.min.y,
@@ -971,6 +1954,8 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     activeCam.position.copy(focus).addScaledVector(direction, targetDist);
     orbit.update();
     updatePartLiveCorners();
+    applyCoplanarOffsetMitigation();
+    room.fit(staticFurnitureBounds, personBounds, p.visible);
     projectionDirty = true;
   }
 
@@ -979,32 +1964,24 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     const d = state.dimensions, resized = !dims || dims.width !== d.width || dims.height !== d.height || dims.depth !== d.depth;
     let layout = resized || showGuides !== state.showDimensions;
     if (layout) { dims = { ...d }; showGuides = state.showDimensions; guides.set(showGuides, d); }
+    if (xrayEnabled) applyXrayState(false);
     finishes.update(state.finishes);
 
-    let jointImmediate = false;
-    for (const j of joints.values()) {
-      const target = state.joints[j.def.id];
-      if (resized) j.pivot = resolveVec(j.def.pivot, d);
-      if (!j.initialized || !animate || reducedMotion) {
-        if (resized || j.current !== target || !j.initialized) {
-          j.current = j.target = j.from = target;
-          j.initialized = true;
-          applyJointTransform(j, j.current);
-          jointImmediate = true;
-        }
-      } else if (j.target !== target) {
-        j.from = j.current;
-        j.target = target;
-        j.startTime = now;
-        j.duration = 420;
-      }
+    let optionChanged = false;
+    if (!optionsCache) optionChanged = true;
+    else {
+      for (const k of Object.keys(state.options)) if (optionsCache[k] !== state.options[k]) { optionChanged = true; break; }
+    }
+    if (resized || optionChanged) {
+      optionsCache = { ...state.options };
+      kinematics.setDimensionsAndOptions(d, state.options);
     }
 
     for (const p of parts) {
       if (resized) {
         const center = resolveVec(p.def.center, d);
         p.closedCenter = center;
-        positionPart(p.anchor, center, p.joint);
+        positionPart(p.anchor, center, p.joint ?? null);
         const s = resolveVec(p.def.size, d), prev = p.size;
         if (s[0] !== prev[0] || s[1] !== prev[1] || s[2] !== prev[2]) {
           p.size = s;
@@ -1025,6 +2002,66 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
       }
       const visible = p.def.when.every(rule => state.options[rule.option] === rule.choice);
       if (p.anchor.visible !== visible) { p.anchor.visible = visible; layout = true; }
+    }
+    if (xrayEnabled) applyXrayState(true);
+
+    let jointImmediate = false;
+    for (const j of joints.values()) {
+      if (resized) j.pivot = resolveVec(j.def.pivot, d);
+    }
+    for (const p of parts) {
+      if (resized && p.joint) positionPart(p.anchor, p.closedCenter, p.joint);
+    }
+
+    if ((resized || optionChanged) && ready) {
+      const adjusted = kinematics.resolveAllOverlaps(liveJointPositions());
+      const adjKeys = Object.keys(adjusted);
+      if (adjKeys.length) {
+        for (const id of adjKeys) {
+          const j = joints.get(id);
+          j.current = j.target = adjusted[id];
+          j.velocity = 0;
+          applyJointTransform(j, j.current);
+          jointImmediate = true;
+        }
+        callbacks.onJointSync?.(adjusted);
+      }
+    }
+
+    const posMap = liveJointPositions();
+    for (const j of joints.values()) {
+      const requested = state.joints[j.id];
+      if (!j.initialized || !animate || reducedMotion) {
+        if (!j.initialized) {
+          j.current = j.target = requested;
+          j.velocity = 0;
+          j.initialized = true;
+          applyJointTransform(j, j.current);
+          posMap[j.id] = j.current;
+          jointImmediate = true;
+        } else if (resized || Math.abs(j.current - requested) > 1e-6) {
+          const res = kinematics.resolveJointMotion(j.id, j.current, requested, posMap);
+          j.current = j.target = res.progress;
+          j.velocity = 0;
+          posMap[j.id] = res.progress;
+          applyJointTransform(j, j.current);
+          jointImmediate = true;
+          if (res.blocked) {
+            const col = {
+              id: j.id,
+              label: j.label,
+              blockerLabel: res.blocker.label,
+              blockerJointId: res.blocker.jointId,
+              blockerPartId: res.blocker.partId,
+              progress: res.progress
+            };
+            triggerBlockerFlash(col);
+            callbacks.onJointBlocked?.(col);
+          }
+        }
+      } else {
+        j.target = requested;
+      }
     }
 
     for (const sw of switches.values()) {
@@ -1051,13 +2088,28 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     }
 
     const personState = state.person, prior = personGeometry;
+    if (prior && prior.side !== personState.side && !personActor.running) {
+      personActor.hasMoved = false;
+    }
+    if (prior && prior.pose !== personState.pose && !personActor.running) {
+      personActor.sitBlend = personState.pose === 'seated' ? 1 : 0;
+      personActor.seatHeightNorm = 0;
+      personActor.seatedSeat = null;
+    }
+    const poseOrYawChanged = !personActor.running && (prior?.pose !== personState.pose || prior?.yaw !== personState.yaw);
     if (!prior || prior.visible !== personState.visible || (personState.visible &&
-      (prior.height !== personState.height || prior.build !== personState.build || prior.pose !== personState.pose ||
-        prior.side !== personState.side || prior.yaw !== personState.yaw))) {
+      (prior.height !== personState.height || prior.build !== personState.build || prior.side !== personState.side || poseOrYawChanged))) {
       personGeometry = { ...personState };
       layout = true;
+    } else if (personActor.running) {
+      personGeometry = { ...personState };
     }
     person.update(personState);
+    if (personActor.running || personActor.hasMoved) {
+      person.root.position.set(personActor.posX, 0, personActor.posZ);
+      person.root.rotation.y = personActor.yaw;
+      person.setMotion?.(currentMotionPayload());
+    }
 
     if (layout) updateLayout(personState);
     else if (jointImmediate) { updatePartLiveCorners(); projectionDirty = true; }
@@ -1111,18 +2163,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
 
   function zoom(factor) {
     if (!Number.isFinite(factor) || factor <= 0) throw new Error('Zoom factor must be positive.');
-    camAnim = null;
-    if (projectionMode === 'orthographic') {
-      orthoCam.zoom = clamp(orthoCam.zoom * factor, orbit.minZoom, orbit.maxZoom);
-      orthoCam.updateProjectionMatrix();
-    } else {
-      direction.subVectors(perspCam.position, orbit.target);
-      const dist = clamp(direction.length() / factor, orbit.minDistance, orbit.maxDistance);
-      direction.normalize();
-      perspCam.position.copy(orbit.target).addScaledVector(direction, dist);
-    }
-    orbit.update();
-    cameraChanged();
+    queueZoom(factor);
   }
 
   function turn(yawDegrees, pitchDegrees) {
@@ -1139,6 +2180,7 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     if (mode !== 'perspective' && mode !== 'orthographic') throw new Error(`Unknown projection: ${mode}`);
     if (projectionMode === mode) return;
     camAnim = null;
+    zoomFactorPending = 1;
     const prevCam = activeCam;
     direction.subVectors(prevCam.position, orbit.target).normalize();
     const prevDist = prevCam.position.distanceTo(orbit.target);
@@ -1157,6 +2199,15 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
       perspCam.position.copy(orbit.target).addScaledVector(direction, dist);
       activeCam = perspCam;
     }
+    if (renderPass) renderPass.camera = activeCam;
+    if (gtaoPass) {
+      gtaoPass.camera = activeCam;
+      const isPersp = activeCam.isPerspectiveCamera ? 1 : 0;
+      if (gtaoPass.gtaoMaterial.defines.PERSPECTIVE_CAMERA !== isPersp) {
+        gtaoPass.gtaoMaterial.defines.PERSPECTIVE_CAMERA = isPersp;
+        gtaoPass.gtaoMaterial.needsUpdate = true;
+      }
+    }
     orbit.object = activeCam;
     orbit.update();
     cameraChanged();
@@ -1164,6 +2215,40 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
 
   function setLighting(name) {
     lighting.setPreset(name);
+    refreshSwitches();
+    schedule();
+  }
+
+  function setBackdrop(mode) {
+    backdropMode = mode === 'room' ? 'room' : 'studio';
+    const isRoom = backdropMode === 'room';
+    room.setVisible(isRoom);
+    lighting.setFloorVisible(!isRoom);
+    updateAoClipBox();
+    renderer.shadowMap.needsUpdate = true;
+    schedule();
+  }
+
+  function setRoomStyle(style) {
+    room.setStyle(style);
+    schedule();
+  }
+
+  function setXray(enabled) {
+    xrayEnabled = Boolean(enabled);
+    applyXrayState(xrayEnabled);
+    schedule();
+  }
+
+  function setLedTemp(tempId) {
+    if (!LED_TEMPS[tempId]) return;
+    ledTempId = tempId;
+    refreshSwitches();
+    schedule();
+  }
+
+  function setAO(enabled) {
+    aoEnabled = Boolean(enabled);
     schedule();
   }
 
@@ -1172,9 +2257,42 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     updateHotspots();
   }
 
-  // Pointer interaction: raycast click vs orbit drag + fine hover feedback.
+  // Smooth cross-browser two-finger trackpad zoom (pinch + vertical two-finger scroll + Safari gestures).
+  container.addEventListener('wheel', e => {
+    if (!ready) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 16;
+    else if (e.deltaMode === 2) dy *= 100;
+    if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(dy) * 2 && Math.abs(dy) < 0.5) return;
+    if (Math.abs(dy) < 0.01) return;
+    const factor = e.ctrlKey
+      ? Math.exp(-clamp(dy, -120, 120) * 0.012)
+      : Math.exp(-clamp(dy, -200, 200) * 0.0018);
+    queueZoom(factor);
+  }, { passive: false, capture: true });
+
+  let gestureScale = 1;
+  container.addEventListener('gesturestart', e => {
+    e.preventDefault();
+    gestureScale = e.scale || 1;
+  }, { passive: false });
+  container.addEventListener('gesturechange', e => {
+    e.preventDefault();
+    const next = e.scale || 1;
+    if (gestureScale > 0 && next > 0) queueZoom(next / gestureScale);
+    gestureScale = next;
+  }, { passive: false });
+  container.addEventListener('gestureend', e => {
+    e.preventDefault();
+    gestureScale = 1;
+  }, { passive: false });
+
+  // Pointer interaction: raycast click vs orbit drag + fine hover feedback + multi-touch safety.
   const raycaster = new T.Raycaster();
   const pointer = new T.Vector2();
+  const activePointers = new Set();
   let pointerDown = null;
 
   function pickInteractive(clientX, clientY) {
@@ -1184,66 +2302,114 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointer, activeCam);
     const hits = raycaster.intersectObjects(interactiveMeshes, false);
+    const visibleHits = [];
     for (const hit of hits) {
       let visible = true;
       for (let o = hit.object; o; o = o.parent) { if (!o.visible) { visible = false; break; } }
-      if (visible && hit.object.userData.interactive) return hit.object;
+      if (visible && hit.object.userData.interactive) visibleHits.push(hit.object);
     }
-    return null;
+    if (!visibleHits.length) return null;
+    if (xrayEnabled) {
+      const inner = visibleHits.find(obj => !isXrayFront(obj.userData.part));
+      if (inner) return inner;
+    }
+    return visibleHits[0];
   }
 
-  function setHoverAction(action) {
-    const same = activeHoverAction?.type === action?.type && activeHoverAction?.id === action?.id;
-    if (same) return;
-    activeHoverAction = action;
-    for (const part of parts) {
-      const match =
-        (action?.type === 'switch' && partToSwitch.get(part.def.id)?.id === action.id) ||
-        (action?.type === 'joint' && part.joint?.def.id === action.id) ||
-        (action?.type === 'option' && part.def.when.length === 1 && part.def.when[0].option === action.id) ||
-        (action?.type === 'slot' && part.def.slot === action.id);
-      if (part.hovered !== Boolean(match)) {
-        part.hovered = Boolean(match);
-        syncPartEmissive(part);
+  let activeHoverKey = null;
+
+  function setHoverHit(hit, clientX = 0, clientY = 0) {
+    const action = hit ? hit.userData.interactive : null;
+    const partObj = hit?.userData.part ?? null;
+    const slotId = partObj?.def.slot ?? null;
+    const partId = partObj?.def.id ?? null;
+    const key = action ? `${action.type}:${action.id ?? ''}:${partId ?? ''}` : null;
+
+    if (key !== activeHoverKey) {
+      activeHoverKey = key;
+      for (const part of parts) {
+        const match =
+          (action?.type === 'switch' && partToSwitch.get(part.def.id)?.id === action.id) ||
+          (action?.type === 'joint' && part.joint?.def.id === action.id) ||
+          (action?.type === 'option' && part.def.when.length === 1 && part.def.when[0].option === action.id) ||
+          (action?.type === 'slot' && part.def.slot === action.id);
+        if (part.hovered !== Boolean(match)) {
+          part.hovered = Boolean(match);
+          syncPartEmissive(part);
+        }
       }
+      canvas.style.cursor = action ? 'pointer' : 'grab';
+      schedule();
     }
-    canvas.style.cursor = action ? 'pointer' : 'grab';
-    callbacks.onHover?.(action);
-    schedule();
+
+    if (!action) {
+      callbacks.onHover?.(null);
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+    callbacks.onHover?.({
+      action,
+      slotId,
+      partId,
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    });
   }
 
   canvas.addEventListener('pointerdown', e => {
+    activePointers.add(e.pointerId);
+    if (activePointers.size > 1) {
+      pointerDown = null;
+      setHoverHit(null);
+      return;
+    }
     if (e.button === 0) pointerDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
     canvas.style.cursor = 'grabbing';
   });
   canvas.addEventListener('pointermove', e => {
+    if (activePointers.size > 1) return;
     if (pointerDown && e.pointerId === pointerDown.id) {
       if (Math.hypot(e.clientX - pointerDown.x, e.clientY - pointerDown.y) >= 6) {
-        setHoverAction(null);
+        setHoverHit(null);
       }
       return;
     }
     if (e.pointerType !== 'mouse') return;
     const hit = pickInteractive(e.clientX, e.clientY);
-    setHoverAction(hit ? hit.userData.interactive : null);
+    setHoverHit(hit, e.clientX, e.clientY);
   });
   canvas.addEventListener('pointerleave', () => {
-    setHoverAction(null);
+    setHoverHit(null);
   });
   canvas.addEventListener('pointerup', e => {
-    if (!pointerDown || e.pointerId !== pointerDown.id) return;
+    activePointers.delete(e.pointerId);
+    if (!pointerDown || e.pointerId !== pointerDown.id) {
+      if (activePointers.size === 0) canvas.style.cursor = activeHoverKey ? 'pointer' : 'grab';
+      return;
+    }
     const moved = Math.hypot(e.clientX - pointerDown.x, e.clientY - pointerDown.y);
     pointerDown = null;
     if (moved < 6) {
       const hit = pickInteractive(e.clientX, e.clientY);
       if (hit) callbacks.onInteract?.(hit.userData.interactive);
     }
-    canvas.style.cursor = activeHoverAction ? 'pointer' : 'grab';
+    canvas.style.cursor = activeHoverKey ? 'pointer' : 'grab';
   });
-  canvas.addEventListener('pointercancel', () => {
+  canvas.addEventListener('pointercancel', e => {
+    activePointers.delete(e.pointerId);
     pointerDown = null;
     canvas.style.cursor = 'grab';
   });
+
+  function loadDataImage(dataUri) {
+    return new Promise(resolve => {
+      if (typeof dataUri !== 'string' || !dataUri.startsWith('data:image/')) { resolve(null); return; }
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = dataUri;
+    });
+  }
 
   async function exportPng({ scale = 2, transparent = false, includeGuides = false, includeCaption = false, caption = null } = {}) {
     if (!ready || !width || !height) throw new Error('3D view is not ready yet.');
@@ -1267,6 +2433,11 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     try {
       renderer.setPixelRatio(1);
       renderer.setSize(exportW, exportH, false);
+      const useAoComposer = Boolean(composer && aoEnabled && !xrayEnabled && !transparent);
+      if (useAoComposer) {
+        composer.setPixelRatio(1);
+        composer.setSize(exportW, exportH);
+      }
       if (transparent) {
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
@@ -1288,11 +2459,12 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
         perspCam.updateProjectionMatrix();
       }
 
-      renderer.render(scene, activeCam);
+      if (useAoComposer) composer.render();
+      else renderer.render(scene, activeCam);
       ctx.drawImage(canvas, 0, 0, exportW, exportH);
 
       if (includeGuides) {
-        drawGuidesToCanvas(ctx, guides.endpoints, activeCam, exportW, exportH, dims, safeScale);
+        drawGuidesToCanvas(ctx, guides.endpoints, activeCam, exportW, exportH, dims, safeScale, locale);
       }
 
       if (includeCaption && caption) {
@@ -1303,35 +2475,65 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
 
         const padX = Math.round(22 * safeScale);
         const midY = exportH + footerH * 0.5;
+        const rtl = Boolean(caption.rtl);
+        let textOffset = 0;
+
+        if (caption.brand?.logo) {
+          const logoImg = await loadDataImage(caption.brand.logo);
+          if (logoImg) {
+            const natW = logoImg.naturalWidth || 120;
+            const natH = logoImg.naturalHeight || 40;
+            const maxH = 40 * safeScale;
+            const maxW = 120 * safeScale;
+            const ratio = Math.min(maxW / natW, maxH / natH);
+            const drawW = Math.max(1, Math.round(natW * ratio));
+            const drawH = Math.max(1, Math.round(natH * ratio));
+            const logoX = rtl ? exportW - padX - drawW : padX;
+            const logoY = Math.round(midY - drawH * 0.5);
+            ctx.drawImage(logoImg, logoX, logoY, drawW, drawH);
+            textOffset = drawW + Math.round(14 * safeScale);
+          }
+        }
+
+        const titleX = rtl ? exportW - padX - textOffset : padX + textOffset;
+        const metaX = rtl ? padX : exportW - padX;
+        const titleMaxW = Math.max(80 * safeScale, exportW * 0.54 - textOffset);
+        const finishesMaxW = Math.max(80 * safeScale, exportW * 0.58 - textOffset);
+
         ctx.fillStyle = '#222b26';
         ctx.font = `600 ${Math.round(17 * safeScale)}px Georgia, "Times New Roman", serif`;
-        ctx.textAlign = 'left';
+        ctx.textAlign = rtl ? 'right' : 'left';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(caption.name, padX, midY - 2 * safeScale, exportW * 0.54);
+        ctx.fillText(caption.name, titleX, midY - 2 * safeScale, titleMaxW);
 
         ctx.fillStyle = '#56635b';
         ctx.font = `500 ${Math.round(11 * safeScale)}px system-ui, -apple-system, sans-serif`;
         ctx.textBaseline = 'top';
-        ctx.fillText(caption.finishes, padX, midY + 4 * safeScale, exportW * 0.58);
+        ctx.fillText(caption.finishes, titleX, midY + 4 * safeScale, finishesMaxW);
 
-        ctx.textAlign = 'right';
+        ctx.textAlign = rtl ? 'left' : 'right';
         ctx.fillStyle = '#222b26';
         ctx.font = `600 ${Math.round(12.5 * safeScale)}px ui-monospace, SFMono-Regular, Consolas, monospace`;
         ctx.textBaseline = 'bottom';
-        ctx.fillText(caption.dimensions, exportW - padX, midY - 2 * safeScale);
+        ctx.fillText(caption.dimensions, metaX, midY - 2 * safeScale);
 
         ctx.fillStyle = '#56635b';
         ctx.font = `500 ${Math.round(10 * safeScale)}px system-ui, -apple-system, sans-serif`;
         ctx.textBaseline = 'top';
-        ctx.fillText('Form Study · Visual reference only', exportW - padX, midY + 4 * safeScale);
+        ctx.fillText(caption.disclaimer || 'Form Study · Visual reference only', metaX, midY + 4 * safeScale);
       }
     } finally {
       renderer.setPixelRatio(savedPR);
       renderer.setSize(width, height, false);
+      if (composer) {
+        composer.setPixelRatio(savedPR);
+        composer.setSize(width, height);
+      }
       scene.background = savedBg;
       renderer.setClearColor(savedClearColor, savedClearAlpha);
       fitProjection();
-      renderer.render(scene, activeCam);
+      if (composer && aoEnabled && !xrayEnabled) composer.render();
+      else renderer.render(scene, activeCam);
     }
 
     const blob = await new Promise((resolve, reject) => {
@@ -1340,5 +2542,202 @@ export async function createStudio(container, spec, assets, callbacks = {}) {
     return { blob, width: outCanvas.width, height: outCanvas.height };
   }
 
-  return { update, view, zoom, turn, setProjection, setLighting, setHotspots, exportPng };
+  async function captureSpecSheetViews() {
+    if (!ready || !width || !height) throw new Error('3D view is not ready yet.');
+    const snapW = 1200;
+    const snapH = 820;
+    const aspect = snapW / snapH;
+
+    const savedPR = renderer.getPixelRatio();
+    const savedMode = projectionMode;
+    const savedCamPos = activeCam.position.clone();
+    const savedTarget = orbit.target.clone();
+    const savedZoom = orthoCam.zoom;
+    const savedShowGuides = showGuides;
+    const savedPersonVis = person.root.visible;
+    const savedPersonPos = person.root.position.clone();
+    const savedPersonRotY = person.root.rotation.y;
+    const savedXray = xrayEnabled;
+    const savedHotspots = hotspotsEnabled;
+    const savedBg = scene.background;
+
+    const snapCanvas = document.createElement('canvas');
+    snapCanvas.width = snapW;
+    snapCanvas.height = snapH;
+    const ctx = snapCanvas.getContext('2d');
+
+    const syncComposerCam = cam => {
+      if (renderPass) renderPass.camera = cam;
+      if (gtaoPass) {
+        gtaoPass.camera = cam;
+        const isPersp = cam.isPerspectiveCamera ? 1 : 0;
+        if (gtaoPass.gtaoMaterial.defines.PERSPECTIVE_CAMERA !== isPersp) {
+          gtaoPass.gtaoMaterial.defines.PERSPECTIVE_CAMERA = isPersp;
+          gtaoPass.gtaoMaterial.needsUpdate = true;
+        }
+      }
+    };
+
+    const snapView = async (viewKey, projMode, guidesOn, xrayOn, personOn) => {
+      const toDir = vector();
+      if (viewKey === 'studio') toDir.copy(studioDirection);
+      else if (viewKey === 'front') toDir.set(0, 0, 1);
+      else if (viewKey === 'side') toDir.set(1, 0, 0);
+      else toDir.set(0, 1, 0.0001).normalize();
+
+      hotspotLayer.hidden = true;
+      person.root.visible = Boolean(personOn && personGeometry?.visible);
+      xrayEnabled = Boolean(xrayOn);
+      applyXrayState(xrayEnabled);
+
+      projectionMode = projMode;
+      activeCam = projMode === 'orthographic' ? orthoCam : perspCam;
+      syncComposerCam(activeCam);
+
+      const box = person.root.visible
+        ? staticBounds
+        : (staticFurnitureBounds.isEmpty() ? staticBounds : staticFurnitureBounds);
+      const snapTarget = box.getCenter(vector());
+      const radius = Math.max(50, box.min.distanceTo(box.max) * 0.5);
+
+      activeCam.position.copy(snapTarget).addScaledVector(toDir, radius * 4);
+      activeCam.lookAt(snapTarget);
+      activeCam.updateMatrixWorld(true);
+
+      right.setFromMatrixColumn(activeCam.matrixWorld, 0);
+      up.setFromMatrixColumn(activeCam.matrixWorld, 1);
+      forward.setFromMatrixColumn(activeCam.matrixWorld, 2);
+
+      let hx = 1, hy = 1, hz = 1;
+      const measureSnap = pt => {
+        delta.subVectors(pt, snapTarget);
+        hx = Math.max(hx, Math.abs(delta.dot(right)));
+        hy = Math.max(hy, Math.abs(delta.dot(up)));
+        hz = Math.max(hz, Math.abs(delta.dot(forward)));
+      };
+      for (const p of parts) if (p.anchor.visible) for (const v of p.points) measureSnap(v);
+      if (person.root.visible) for (const v of personCorners) measureSnap(v);
+      if (plate?.mesh.visible) for (const v of platePoints) measureSnap(v);
+      if (guidesOn) for (const v of guides.endpoints) measureSnap(v);
+
+      const reqHalfH = Math.max(hy, hx / aspect) * (guidesOn ? 1.24 : 1.15);
+      if (projMode === 'orthographic') {
+        orthoCam.zoom = 1;
+        orthoCam.near = radius * 0.08;
+        orthoCam.far = radius * 16;
+        orthoCam.top = reqHalfH;
+        orthoCam.bottom = -reqHalfH;
+        orthoCam.right = reqHalfH * aspect;
+        orthoCam.left = -orthoCam.right;
+        orthoCam.updateProjectionMatrix();
+        orthoCam.lookAt(snapTarget);
+      } else {
+        const dist = reqHalfH / Math.tan(rad(perspCam.fov * 0.5)) + hz * 0.55;
+        perspCam.near = Math.max(10, radius * 0.08);
+        perspCam.far = Math.max(10000, radius * 24);
+        perspCam.position.copy(snapTarget).addScaledVector(toDir, dist);
+        perspCam.aspect = aspect;
+        perspCam.updateProjectionMatrix();
+        perspCam.lookAt(snapTarget);
+      }
+
+      renderer.setPixelRatio(1);
+      renderer.setSize(snapW, snapH, false);
+      const useAo = Boolean(composer && aoEnabled && !xrayEnabled);
+      if (useAo) {
+        composer.setPixelRatio(1);
+        composer.setSize(snapW, snapH);
+      }
+      scene.background = lighting.getBackdropTexture();
+      renderer.setClearColor(0x000000, 1);
+      updateAoClipBox();
+
+      if (useAo) composer.render();
+      else renderer.render(scene, activeCam);
+
+      ctx.clearRect(0, 0, snapW, snapH);
+      ctx.drawImage(canvas, 0, 0, snapW, snapH);
+      if (guidesOn) {
+        drawGuidesToCanvas(ctx, guides.endpoints, activeCam, snapW, snapH, dims, 1.35, locale);
+      }
+      return snapCanvas.toDataURL('image/png');
+    };
+
+    try {
+      const studio = await snapView('studio', 'perspective', false, savedXray, true);
+      const front = await snapView('front', 'orthographic', true, false, false);
+      const side = await snapView('side', 'orthographic', true, false, false);
+      const interior = await snapView(
+        hasXrayTargets ? 'studio' : 'top',
+        hasXrayTargets ? 'perspective' : 'orthographic',
+        !hasXrayTargets,
+        hasXrayTargets,
+        false
+      );
+      return { studio, front, side, interior };
+    } finally {
+      xrayEnabled = savedXray;
+      applyXrayState(xrayEnabled);
+      person.root.visible = savedPersonVis;
+      person.root.position.copy(savedPersonPos);
+      person.root.rotation.y = savedPersonRotY;
+      if (personActor.running || personActor.hasMoved) person.setMotion?.(currentMotionPayload());
+      showGuides = savedShowGuides;
+      guides.set(showGuides, dims);
+      projectionMode = savedMode;
+      activeCam = savedMode === 'orthographic' ? orthoCam : perspCam;
+      syncComposerCam(activeCam);
+      orbit.object = activeCam;
+      orbit.target.copy(savedTarget);
+      activeCam.position.copy(savedCamPos);
+      orthoCam.zoom = savedZoom;
+      orthoCam.updateProjectionMatrix();
+      orbit.update();
+      hotspotsEnabled = savedHotspots;
+      scene.background = savedBg;
+      renderer.setPixelRatio(savedPR);
+      renderer.setSize(width, height, false);
+      if (composer) {
+        composer.setPixelRatio(savedPR);
+        composer.setSize(width, height);
+      }
+      updatePartLiveCorners();
+      fitProjection();
+      if (composer && aoEnabled && !xrayEnabled) composer.render();
+      else renderer.render(scene, activeCam);
+    }
+  }
+
+  function setLocale(nextLocale) {
+    locale = nextLocale || DEFAULT_LOCALE;
+    canvas.setAttribute('aria-label', locale.formatCanvasLabel(locale.term(spec.name)));
+    guides.setLocale(locale);
+    for (const node of hotspotNodes) {
+      node.btn.querySelector('.hotspot-tag').textContent = locale.term(node.entry.def.label);
+    }
+    fitProjection();
+    schedule();
+  }
+
+  return {
+    update,
+    view,
+    zoom,
+    turn,
+    setProjection,
+    setLighting,
+    setBackdrop,
+    setRoomStyle,
+    setXray,
+    setLedTemp,
+    setAO,
+    setPersonAutoRun,
+    isPersonAutoRunning: () => personActor.running,
+    resetPersonPosition,
+    hasXrayTargets,
+    setHotspots,
+    setLocale,
+    exportPng,
+    captureSpecSheetViews
+  };
 }

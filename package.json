@@ -5,11 +5,14 @@
   "type": "module",
   "engines": { "node": ">=22.12" },
   "scripts": {
+    "setup": "node tools/setup.mjs",
     "build": "node tools/compile.mjs",
-    "demo": "node tools/export.mjs --reviewed examples/linea.json dist/index.html --replace",
+    "demo": "node tools/export.mjs --reviewed --brand examples/demo-brand.json examples/linea.json dist/index.html --replace",
+    "materials": "node tools/materials.mjs",
     "pack:skill": "node tools/compile.mjs && node tools/package.mjs",
     "extract": "node tools/extract.mjs",
     "review": "node tools/review.mjs",
+    "fix-collisions": "node tools/fix-collisions.mjs",
     "export": "node tools/export.mjs",
     "test": "node --test test/*.test.mjs"
   },

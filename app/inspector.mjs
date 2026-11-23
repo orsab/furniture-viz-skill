@@ -6,11 +6,11 @@ const el = (tag, cls, text) => {
   if (text != null) node.textContent = text;
   return node;
 };
-const cap = s => s[0].toUpperCase() + s.slice(1);
 
-function section(host, title, open = false) {
+function section(host, key, title, openDefault, openSet) {
   const details = el('details', 'section'), body = el('div', 'section-body');
-  details.open = open;
+  details.dataset.section = key;
+  details.open = openSet ? openSet.has(key) : openDefault;
   details.append(el('summary', null, title), body);
   host.append(details);
   return { details, body };
@@ -25,8 +25,6 @@ function select(host, labelText, entries, value, onChange) {
   host.append(label);
   return input;
 }
-
-const pairs = values => values.map(v => [v, cap(v)]);
 
 function toggle(host, labelText, checked, change) {
   const label = el('label', 'check-row'), box = el('input');
@@ -48,7 +46,7 @@ function color(host, labelText, value, change) {
   return v => { box.value = v; code.textContent = v.toUpperCase(); };
 }
 
-function measure(host, labelText, unit, value, min, max, change, actionBtn = null) {
+function measure(host, labelText, unit, value, min, max, change, tr, actionBtn = null) {
   const group = el('div', 'measure'), label = el('label', 'measure-entry'), entry = el('input'), suffix = el('span', 'suffix', unit);
   entry.type = 'number';
   entry.step = '1';
@@ -63,7 +61,7 @@ function measure(host, labelText, unit, value, min, max, change, actionBtn = nul
   let setVal;
   if (min === max) {
     entry.readOnly = true;
-    group.append(el('small', 'muted', 'Fixed by the design'));
+    group.append(el('small', 'muted', tr.t('fixedByDesign')));
     setVal = v => { value = v; entry.value = String(v); };
   } else {
     const slider = el('input', 'range');
@@ -72,7 +70,7 @@ function measure(host, labelText, unit, value, min, max, change, actionBtn = nul
     slider.max = String(max);
     slider.step = '1';
     slider.value = String(value);
-    slider.setAttribute('aria-label', `${labelText} slider (${unit})`);
+    slider.setAttribute('aria-label', `${labelText} (${unit})`);
     const error = el('small', 'error');
     error.setAttribute('role', 'status');
     error.hidden = true;
@@ -87,7 +85,7 @@ function measure(host, labelText, unit, value, min, max, change, actionBtn = nul
       if (entry.validity.valid) apply();
       else {
         entry.setAttribute('aria-invalid', 'true');
-        error.textContent = `Enter a whole number from ${min} to ${max} ${unit}.`;
+        error.textContent = tr.t('invalidWholeNumber', { min, max, unit });
         error.hidden = false;
       }
     });
@@ -114,11 +112,19 @@ function measure(host, labelText, unit, value, min, max, change, actionBtn = nul
   return { group, setVal };
 }
 
-export function mountInspector(furniture, person, spec, state, onChange) {
+const SURFACE_KEY = {
+  wood: 'surfaceWood',
+  fabric: 'surfaceFabric',
+  metal: 'surfaceMetal',
+  paint: 'surfacePaint'
+};
+
+export function mountInspector(furniture, person, spec, state, onChange, tr, preserved = null, lightingCtrl = null, personCtrl = null) {
   furniture.replaceChildren();
   person.replaceChildren();
   const visibility = [];
   const syncers = [];
+  const openSet = preserved?.openSections ?? null;
   const visibleParts = () => spec.parts.filter(p => p.when.every(c => state.options[c.option] === c.choice));
   const commit = (mode = 'immediate') => {
     const parts = visibleParts();
@@ -127,12 +133,17 @@ export function mountInspector(furniture, person, spec, state, onChange) {
   };
 
   let finishesController = null;
+  let currentSlotId = preserved?.selectedSlot && spec.slots.some(s => s.id === preserved.selectedSlot)
+    ? preserved.selectedSlot
+    : (spec.slots[0]?.id ?? null);
+
   if (spec.slots.length) {
-    const { details, body } = section(furniture, 'Finishes', true);
+    const { details, body } = section(furniture, 'finishes', tr.t('finishes'), true, openSet);
     const scope = el('fieldset', 'unboxed'), note = el('p', 'hint');
-    let selected = spec.slots[0];
-    const slotSelect = select(body, 'Apply finish to', spec.slots.map(s => [s.id, s.label]), selected.id, id => {
+    let selected = spec.slots.find(s => s.id === currentSlotId) || spec.slots[0];
+    const slotSelect = select(body, tr.t('applyFinishTo'), spec.slots.map(s => [s.id, tr.term(s.label)]), selected.id, id => {
       selected = spec.slots.find(s => s.id === id);
+      currentSlotId = selected.id;
       draw();
       refresh(visibleParts());
     });
@@ -141,7 +152,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
     function refresh(parts) {
       scope.disabled = !parts.some(p => p.slot === selected.id);
       note.hidden = !scope.disabled;
-      note.textContent = 'This material group is not visible with the current construction options.';
+      note.textContent = tr.t('finishHiddenHint');
     }
     function syncPalette() {
       const f = state.finishes[selected.id];
@@ -154,7 +165,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
       scope.replaceChildren();
       swatchRadios = [];
       const f = state.finishes[selected.id];
-      scope.append(el('legend', 'field-title', 'Finish palette'));
+      scope.append(el('legend', 'field-title', tr.t('finishPalette')));
       const swatches = el('div', 'swatches');
       scope.append(swatches);
       selected.finishes.forEach((finish, index) => {
@@ -166,7 +177,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
         dot.style.setProperty('--sample', finish.color);
         dot.dataset.surface = finish.surface;
         dot.setAttribute('aria-hidden', 'true');
-        words.append(el('strong', null, finish.name), el('small', null, cap(finish.surface)));
+        words.append(el('strong', null, tr.term(finish.name)), el('small', null, tr.t(SURFACE_KEY[finish.surface] || finish.surface)));
         input.addEventListener('change', () => {
           if (input.checked) { f.index = index; f.tint = null; syncPalette(); onChange('immediate'); }
         });
@@ -174,12 +185,12 @@ export function mountInspector(furniture, person, spec, state, onChange) {
         swatches.append(label);
         swatchRadios.push(input);
       });
-      writeTint = color(scope, 'Custom tint', f.tint ?? selected.finishes[f.index].color, v => {
+      writeTint = color(scope, tr.t('customTint'), f.tint ?? selected.finishes[f.index].color, v => {
         f.tint = v;
         clearBtn.disabled = false;
         onChange('immediate');
       });
-      clearBtn = el('button', 'text-button', 'Use preset color');
+      clearBtn = el('button', 'text-button', tr.t('usePresetColor'));
       clearBtn.type = 'button';
       clearBtn.addEventListener('click', () => { f.tint = null; syncPalette(); onChange('immediate'); });
       scope.append(clearBtn);
@@ -195,6 +206,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
         document.getElementById('furniture-tab')?.click();
         details.open = true;
         selected = found;
+        currentSlotId = found.id;
         slotSelect.value = slotId;
         draw();
         refresh(visibleParts());
@@ -203,26 +215,27 @@ export function mountInspector(furniture, person, spec, state, onChange) {
     };
   }
 
-  const { body: dims } = section(furniture, 'Dimensions');
-  dims.append(el('p', 'hint', 'Enclosure dimensions in millimeters. Protruding hardware and open parts can extend beyond them.'));
+  const { body: dims } = section(furniture, 'dimensions', tr.t('dimensions'), false, openSet);
+  dims.append(el('p', 'hint', tr.t('dimensionsHint')));
+  const axisLabels = { width: tr.t('axisWidth'), height: tr.t('axisHeight'), depth: tr.t('axisDepth') };
   for (const k of axes) {
     const r = spec.dimensions[k];
-    const ctrl = measure(dims, cap(k), 'mm', state.dimensions[k], r.min, r.max, v => {
+    const ctrl = measure(dims, axisLabels[k], tr.mmUnit, state.dimensions[k], r.min, r.max, v => {
       state.dimensions[k] = v;
       onChange('immediate');
-    });
+    }, tr);
     syncers.push(() => ctrl.setVal(state.dimensions[k]));
   }
-  const guidesBox = toggle(dims, 'Show measurement guides', state.showDimensions, v => {
+  const guidesBox = toggle(dims, tr.t('showGuides'), state.showDimensions, v => {
     state.showDimensions = v;
     onChange('immediate');
   });
   syncers.push(() => { guidesBox.checked = state.showDimensions; });
 
   if (spec.options.length) {
-    const { body } = section(furniture, 'Construction');
+    const { body } = section(furniture, 'construction', tr.t('construction'), false, openSet);
     for (const o of spec.options) {
-      const sel = select(body, o.label, o.choices.map(v => [v, v]), state.options[o.id], v => {
+      const sel = select(body, tr.term(o.label), o.choices.map(v => [v, tr.term(v)]), state.options[o.id], v => {
         state.options[o.id] = v;
         commit('immediate');
       });
@@ -231,12 +244,12 @@ export function mountInspector(furniture, person, spec, state, onChange) {
   }
 
   if (spec.joints.length) {
-    const { body } = section(furniture, 'Doors & movement', true);
+    const { body } = section(furniture, 'joints', tr.t('doorsAndMovement'), true, openSet);
     if (spec.joints.length >= 2) {
       const row = el('div', 'joint-bulk');
-      const openAll = el('button', 'chip-button', 'Open all');
+      const openAll = el('button', 'chip-button', tr.t('openAll'));
       openAll.type = 'button';
-      const closeAll = el('button', 'chip-button', 'Close all');
+      const closeAll = el('button', 'chip-button', tr.t('closeAll'));
       closeAll.type = 'button';
       openAll.addEventListener('click', () => {
         for (const j of spec.joints) state.joints[j.id] = 1;
@@ -252,22 +265,23 @@ export function mountInspector(furniture, person, spec, state, onChange) {
       body.append(row);
     }
     for (const j of spec.joints) {
-      const group = el('fieldset', 'unboxed'), hint = el('small', 'hint', 'Not visible in this configuration.');
-      group.append(el('legend', 'sr-only', j.label));
+      const group = el('fieldset', 'unboxed'), hint = el('small', 'hint', tr.t('notVisibleHint'));
+      const jLabel = tr.term(j.label);
+      group.append(el('legend', 'sr-only', jLabel));
       const toggleBtn = el('button', 'joint-toggle');
       toggleBtn.type = 'button';
       const syncToggleLabel = pct => {
         const isOpen = pct > 2;
-        toggleBtn.textContent = isOpen ? 'Close' : 'Open';
-        toggleBtn.setAttribute('aria-label', `${isOpen ? 'Close' : 'Open'} ${j.label}`);
+        toggleBtn.textContent = isOpen ? tr.t('close') : tr.t('open');
+        toggleBtn.setAttribute('aria-label', tr.t(isOpen ? 'closeActionLabel' : 'openActionLabel', { label: jLabel }));
       };
       const pctInit = Math.round(state.joints[j.id] * 100);
       syncToggleLabel(pctInit);
-      const ctrl = measure(group, j.label, '%', pctInit, 0, 100, v => {
+      const ctrl = measure(group, jLabel, '%', pctInit, 0, 100, v => {
         state.joints[j.id] = v / 100;
         syncToggleLabel(v);
         onChange('immediate');
-      }, toggleBtn);
+      }, tr, toggleBtn);
       toggleBtn.addEventListener('click', () => {
         const next = state.joints[j.id] > 0.02 ? 0 : 1;
         state.joints[j.id] = next;
@@ -290,14 +304,15 @@ export function mountInspector(furniture, person, spec, state, onChange) {
   }
 
   if (spec.switches?.length) {
-    const { body } = section(furniture, 'Switches & lighting', true);
+    const { body } = section(furniture, 'switches', tr.t('switchesAndLighting'), true, openSet);
     for (const sw of spec.switches) {
       const group = el('fieldset', 'unboxed switch-group');
-      const hint = el('small', 'hint', 'Not visible in this configuration.');
-      group.append(el('legend', 'sr-only', sw.label));
+      const hint = el('small', 'hint', tr.t('notVisibleHint'));
+      const swLabel = tr.term(sw.label);
+      group.append(el('legend', 'sr-only', swLabel));
       const row = el('div', 'switch-row');
       const labelId = `sw-lbl-${sw.id}`;
-      const labelSpan = el('span', 'field-title', sw.label);
+      const labelSpan = el('span', 'field-title', swLabel);
       labelSpan.id = labelId;
       const btn = el('button', 'switch-btn');
       btn.type = 'button';
@@ -310,7 +325,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
       const syncSwitch = () => {
         const on = Boolean(state.switches[sw.id]);
         btn.setAttribute('aria-checked', String(on));
-        stateText.textContent = on ? 'On' : 'Off';
+        stateText.textContent = on ? tr.t('switchOn') : tr.t('switchOff');
       };
       syncSwitch();
       btn.addEventListener('click', () => {
@@ -328,17 +343,49 @@ export function mountInspector(furniture, person, spec, state, onChange) {
       });
       syncers.push(syncSwitch);
     }
+
+    if (lightingCtrl && spec.switches.some(sw => Boolean(sw.light))) {
+      const kRow = el('div', 'kelvin-row');
+      kRow.append(el('span', 'field-title', tr.t('ledTempLabel')));
+      const chips = el('div', 'kelvin-chips');
+      chips.setAttribute('role', 'group');
+      chips.setAttribute('aria-label', tr.t('ledTempLabel'));
+      const kelvinEntries = [
+        ['2700', tr.t('ledTemp2700')],
+        ['3500', tr.t('ledTemp3500')],
+        ['4500', tr.t('ledTemp4500')]
+      ];
+      const buttons = kelvinEntries.map(([id, text]) => {
+        const b = el('button', 'chip-button', text);
+        b.type = 'button';
+        b.dataset.kelvin = id;
+        b.addEventListener('click', () => {
+          lightingCtrl.onLedTemp?.(id);
+          syncKelvin();
+        });
+        chips.append(b);
+        return b;
+      });
+      const syncKelvin = () => {
+        const active = String(lightingCtrl.getLedTemp?.() ?? '3500');
+        for (const b of buttons) b.setAttribute('aria-pressed', String(b.dataset.kelvin === active));
+      };
+      syncKelvin();
+      kRow.append(chips);
+      body.append(kRow);
+      syncers.push(syncKelvin);
+    }
   }
 
   if (spec.inscription) {
-    const { body } = section(furniture, 'Personalization');
+    const { body } = section(furniture, 'inscription', tr.t('personalization'), false, openSet);
     const label = el('label', 'field'), input = el('input');
     input.type = 'text';
     input.maxLength = 32;
     input.value = state.inscription;
-    input.placeholder = 'e.g. Studio No. 04';
-    label.append(el('span', 'field-title', 'Nameplate text'), input);
-    body.append(label, el('p', 'hint', 'Up to 32 characters. Leave blank to remove the plate.'));
+    input.placeholder = tr.t('nameplatePlaceholder');
+    label.append(el('span', 'field-title', tr.t('nameplateText')), input);
+    body.append(label, el('p', 'hint', tr.t('nameplateHint')));
     input.addEventListener('input', () => { state.inscription = input.value; commit('immediate'); });
     syncers.push(() => { input.value = state.inscription; });
   }
@@ -346,39 +393,81 @@ export function mountInspector(furniture, person, spec, state, onChange) {
   const ref = el('div', 'figure-intro');
   person.append(ref);
   ref.append(
-    el('h3', null, 'Human scale'),
-    el('p', 'hint', 'A reference mannequin beside the piece. Standing stature sets its scale in either pose; it is not a fit assessment.')
+    el('h3', null, tr.t('humanScale')),
+    el('p', 'hint', tr.t('humanScaleHint'))
   );
   const p = state.person;
-  const visibleBox = toggle(ref, 'Show reference person', p.visible, v => { p.visible = v; commit('immediate'); });
+  const visibleBox = toggle(ref, tr.t('showPerson'), p.visible, v => {
+    p.visible = v;
+    if (!v && personCtrl?.isRunning?.()) personCtrl.onStop?.();
+    commit('immediate');
+  });
   syncers.push(() => { visibleBox.checked = p.visible; });
 
+  if (personCtrl) {
+    const autoCard = el('div', 'person-auto-card');
+    const autoHead = el('strong', 'person-auto-title', tr.t('personAutoTitle'));
+    const autoHint = el('p', 'hint', tr.t('personAutoHint'));
+    const autoActions = el('div', 'person-auto-actions');
+    const runBtn = el('button', 'chip-button', tr.t('personRun'));
+    runBtn.id = 'person-panel-run';
+    runBtn.type = 'button';
+    runBtn.title = tr.t('personRunTitle');
+    const stopBtn = el('button', 'chip-button', tr.t('personStop'));
+    stopBtn.id = 'person-panel-stop';
+    stopBtn.type = 'button';
+    stopBtn.title = tr.t('personStopTitle');
+    const statusLine = el('p', 'person-auto-status');
+    statusLine.setAttribute('aria-live', 'polite');
+
+    const syncAuto = () => {
+      const running = Boolean(personCtrl.isRunning?.());
+      runBtn.disabled = running;
+      stopBtn.disabled = !running;
+      runBtn.setAttribute('aria-pressed', String(running));
+      statusLine.textContent = personCtrl.getStatusText?.() || tr.t('personAutoIdle');
+    };
+    runBtn.addEventListener('click', () => {
+      personCtrl.onRun?.();
+      syncAuto();
+    });
+    stopBtn.addEventListener('click', () => {
+      personCtrl.onStop?.();
+      syncAuto();
+    });
+    autoActions.append(runBtn, stopBtn);
+    autoCard.append(autoHead, autoHint, autoActions, statusLine);
+    ref.append(autoCard);
+    syncers.push(syncAuto);
+    syncAuto();
+  }
+
   const figure = el('fieldset', 'unboxed figure-settings');
-  figure.append(el('legend', 'sr-only', 'Reference person settings'));
+  figure.append(el('legend', 'sr-only', tr.t('personSettingsLegend')));
   person.append(figure);
-  const { body } = section(figure, 'Size & pose', true);
-  const statureCtrl = measure(body, 'Standing stature', 'mm', p.height, 900, 2200, v => {
+  const { body } = section(figure, 'person-pose', tr.t('sizeAndPose'), true, openSet);
+  const statureCtrl = measure(body, tr.t('standingStature'), tr.mmUnit, p.height, 900, 2200, v => {
     p.height = v;
     onChange('immediate');
-  });
+  }, tr);
   syncers.push(() => statureCtrl.setVal(p.height));
 
   for (const [key, label, choices] of [
-    ['build', 'Build', ['slim', 'regular', 'broad']],
-    ['pose', 'Pose', ['standing', 'seated']],
-    ['side', 'Placement', ['left', 'right']]
+    ['build', tr.t('build'), [['slim', tr.t('buildSlim')], ['regular', tr.t('buildRegular')], ['broad', tr.t('buildBroad')]]],
+    ['pose', tr.t('pose'), [['standing', tr.t('poseStanding')], ['seated', tr.t('poseSeated')]]],
+    ['side', tr.t('placement'), [['left', tr.t('sideLeft')], ['right', tr.t('sideRight')]]]
   ]) {
-    const sel = select(body, label, pairs(choices), p[key], v => { p[key] = v; onChange('immediate'); });
+    const sel = select(body, label, choices, p[key], v => { p[key] = v; onChange('immediate'); });
     syncers.push(() => { sel.value = p[key]; });
   }
-  const yawCtrl = measure(body, 'Facing angle', '°', p.yaw, -180, 180, v => {
+  const yawCtrl = measure(body, tr.t('facingAngle'), '°', p.yaw, -180, 180, v => {
     p.yaw = v;
     onChange('immediate');
-  });
+  }, tr);
   syncers.push(() => yawCtrl.setVal(p.yaw));
 
-  const { body: colors } = section(figure, 'Figure colors');
-  for (const [key, label] of [['skin', 'Skin tone'], ['top', 'Top color'], ['bottom', 'Trouser color']]) {
+  const { body: colors } = section(figure, 'person-colors', tr.t('figureColors'), false, openSet);
+  for (const [key, label] of [['skin', tr.t('skinTone')], ['top', tr.t('topColor')], ['bottom', tr.t('trouserColor')]]) {
     const setColor = color(colors, label, p[key], v => { p[key] = v; onChange('immediate'); });
     syncers.push(() => setColor(p[key]));
   }
@@ -393,6 +482,7 @@ export function mountInspector(furniture, person, spec, state, onChange) {
   for (const refresh of visibility) refresh(visibleParts());
   return {
     sync,
-    focusSlot(slotId) { finishesController?.focusSlot(slotId); }
+    focusSlot(slotId) { finishesController?.focusSlot(slotId); },
+    getSelectedSlot: () => currentSlotId
   };
 }

@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { validateSpec } from '../lib/spec.mjs';
+import { auditGeometry } from '../lib/geometry-qa.mjs';
+import { resolveBrand } from '../lib/brand.mjs';
 
 const help = `Inspect a private furniture draft and its evidence locally; never edit or approve it.
 Usage: node tools/review.mjs DRAFT.json
@@ -37,11 +40,33 @@ async function main() {
   for (const sw of spec.switches ?? []) {
     console.log(`  Switch ${quote(sw.label)}: ${sw.kind}, default ${sw.defaultOn ? 'on' : 'off'}${sw.light ? ', illuminated' : ''}`);
   }
+  const qa = auditGeometry(spec);
+  if (qa.warnings.length === 0) {
+    console.log('\nGeometry QA: 0 warnings (seams, rest clearances, and joint motion clean)');
+  } else {
+    console.log(`\nGeometry QA (${qa.warnings.length} warning(s)):`);
+    for (const w of qa.warnings) console.log(`  [${w.kind}] ${quote(w.message)}`);
+  }
   const counts = { stated: 0, estimated: 0, conflict: 0, unknown: 0 };
   console.log('\nEvidence (includes private source references)');
   for (const { field, status, source, note } of spec.evidence) {
     counts[status]++;
     console.log(`  [${status}] ${quote(field)} ← ${quote(source)}: ${quote(note)}`);
+  }
+  try {
+    const resolvedBrand = await resolveBrand({
+      cwd: process.cwd(),
+      specDir: path.dirname(path.resolve(positionals[0])),
+      env: process.env
+    });
+    if (resolvedBrand) {
+      const descStatus = resolvedBrand.brand.description ? ', with description' : '';
+      console.log(`\nBusiness setup: ${quote(resolvedBrand.brand.businessName)} (logo configured${descStatus}; ${quote(resolvedBrand.path)})`);
+    } else {
+      console.log('\nBusiness setup: not configured — run tools/setup.mjs --name "..." --logo ... before export.');
+    }
+  } catch (brandErr) {
+    console.log(`\nBusiness setup: invalid (${quote(brandErr.message)}) — re-run tools/setup.mjs before export.`);
   }
   console.log(`\nIssues: ${counts.conflict} conflicting; ${counts.unknown} unknown; ${counts.estimated} estimated.`);
   try { validateSpec(spec, { forExport: true }); }

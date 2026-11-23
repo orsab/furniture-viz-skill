@@ -193,7 +193,7 @@ export function makeFinishes(spec, renderer) {
   const textures = new Map(), entries = new Map();
   for (const slot of spec.slots) {
     const base = new T.MeshPhysicalMaterial();
-    entries.set(slot.id, { slot, base, instances: [base], index: -1, tint: null });
+    entries.set(slot.id, { slot, base, instances: [base], index: -1, tint: null, preset: null });
   }
 
   function getMaps(kind) {
@@ -232,10 +232,11 @@ export function makeFinishes(spec, renderer) {
   function update(finishes) {
     for (const [id, e] of entries) {
       const { index, tint } = finishes[id];
-      if (e.index === index && e.tint === tint) continue;
+      const preset = e.slot.finishes[index];
+      if (!preset || (e.index === index && e.tint === tint && e.preset === preset)) continue;
       e.index = index;
       e.tint = tint;
-      const preset = e.slot.finishes[index];
+      e.preset = preset;
       for (const m of e.instances) applyToMaterial(m, preset, tint);
     }
   }

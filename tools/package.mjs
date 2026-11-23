@@ -11,10 +11,10 @@ const name = 'furniture-visualizer', skill = path.join(temp,name);
 try {
   const files = [
     'SKILL.md', 'PRD-Furniture-Visualizer.md',
-    'examples/linea.json', 'examples/linea-brief.txt', 'examples/linea-elevations.pdf', 'examples/linea-finishes.png',
-    'lib/spec.mjs', 'lib/schema.json', 'lib/coordinates.mjs',
+    'examples/linea.json', 'examples/linea-brief.txt', 'examples/linea-elevations.pdf', 'examples/linea-finishes.png', 'examples/demo-logo.svg', 'examples/demo-brand.json',
+    'lib/spec.mjs', 'lib/schema.json', 'lib/coordinates.mjs', 'lib/kinematics.mjs', 'lib/geometry-qa.mjs', 'lib/mesh-fix.mjs', 'lib/brand.mjs', 'lib/materials-parse.mjs', 'lib/png-decode.mjs',
     'assets/check.cjs', 'assets/viewer.js', 'assets/studio.css', 'assets/THIRD-PARTY.txt',
-    'tools/review.mjs', 'tools/extract.mjs', 'tools/prepare.mjs', 'tools/render-pdf.swift', 'tools/export.mjs'
+    'tools/setup.mjs', 'tools/review.mjs', 'tools/fix-collisions.mjs', 'tools/materials.mjs', 'tools/extract.mjs', 'tools/prepare.mjs', 'tools/render-pdf.swift', 'tools/export.mjs'
   ];
   for (const f of await readdir(path.join(root,'references')).catch(e=>{if(e.code==='ENOENT') return []; throw e;})) if (f.endsWith('.md')) files.push(`references/${f}`);
   for (const f of files) { await mkdir(path.dirname(path.join(skill,f)),{recursive:true}); await cp(path.join(root,f),path.join(skill,f)); }
