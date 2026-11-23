@@ -21,6 +21,11 @@ await Promise.all([
       const path = pkg === 'three' ? new URL('../node_modules/three/LICENSE',import.meta.url) : require.resolve('ajv/LICENSE');
       return `${pkg}\n${await readFile(path,'utf8')}`;
     }));
+    thirdParty.push('Reference mannequin motion: Adobe Mixamo (https://www.mixamo.com/).\n' +
+      'Neutral Idle, Walking, Seated Idle, Looking Around, Button Pushing, and Unarmed Turn Left/Right 90.\n' +
+      'Retargeted to the Form Study mannequin; no source models or standalone motion files are shipped.\n' +
+      'Source exports: https://github.com/MisterYI/deevid-mixamo-assets/tree/13066bbd431c855fdc154d1e32d7a37c0b8ee013/anim\n' +
+      'Usage: https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html');
     await writeFile(new URL('../assets/THIRD-PARTY.txt',import.meta.url), thirdParty.join('\n\n'));
   })()
 ]);

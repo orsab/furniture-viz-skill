@@ -1,6 +1,16 @@
 import * as T from 'three';
+import clips from './person-motion.json' with { type: 'json' };
 
 const WHITE = new T.Color(0xffffff);
+const TAU = Math.PI * 2;
+const smooth = x => x * x * (3 - 2 * x);
+const unit = x => T.MathUtils.clamp(x, 0, 1);
+const blendWindow = u => smooth(unit(Math.min(u, 1 - u) * 6));
+const turnClip = angle => angle >= 0 ? clips.turnLeft : clips.turnRight;
+
+function frameIndex(clip, progress) {
+  return unit(progress) * (clip.frames.length - 1);
+}
 
 // An original scale figure. All dimensions here are fractions of its standing height.
 // Ring profiles read bottom to top: elevation, half-width, half-depth, forward offset.
@@ -70,6 +80,7 @@ export function makeMannequin() {
   const shoeShape = profile([[-.049,.033,.069,.026],[-.041,.036,.074,.026],
     [-.025,.034,.07,.024],[-.014,.033,.049,.013],[.013,.029,.032,-.003]]);
   const soleShape = profile([[-.053,.031,.068,.026],[-.051,.036,.074,.026],[-.044,.036,.074,.026]]);
+  const soles = [];
   const sleeve = profile([[-.1,.036,.041],[-.093,.039,.043],[-.052,.042,.048],
     [-.011,.041,.046],[.015,.034,.039],[.03,.012,.019]]);
   const armShape = profile([[-.156,.025,.026],[-.146,.031,.031],[-.091,.032,.034],[-.04,.034,.037]]);
@@ -80,7 +91,8 @@ export function makeMannequin() {
     const thigh = joint(hip, s * .048,0,0), calf = joint(thigh,0,-.242,0);
     const foot = joint(calf,0,-.227,0);
     mesh(thigh,thighShape,bottom); mesh(calf,calfShape,bottom);
-    mesh(foot,shoeShape,shoe); mesh(foot,soleShape,sole);
+    mesh(foot,shoeShape,shoe);
+    soles.push(mesh(foot,soleShape,sole));
     const arm = joint(spine,s * .108,.271,0), elbow = joint(arm,0,-.148,0);
     mesh(arm,sleeve,top); mesh(arm,armShape,skin); mesh(elbow,forearm,skin);
     ellipsoid(elbow,skin,0,-.166,.004,.02,.042,.017);
@@ -88,19 +100,58 @@ export function makeMannequin() {
     limbs.push({s, thigh, calf, foot, arm, elbow});
   }
   let lastPersonState = null;
+  const rig = [hip, spine, head, ...limbs.flatMap(({ thigh, calf, foot, arm, elbow }) =>
+    [thigh, calf, foot, arm, elbow])];
+  const sampleA = new T.Quaternion(), sampleB = new T.Quaternion();
+  const gaze = new T.Quaternion(), gazeAngles = new T.Euler(0, 0, 0, 'YXZ');
+  const aim = new T.Quaternion(), xAxis = new T.Vector3(1, 0, 0);
+  const soleVertices = soleShape.getAttribute('position');
+
+  function layer(clip, progress, weight, from = 0, to = rig.length, mirror = false) {
+    if (weight <= 0) return;
+    const frame = frameIndex(clip, progress);
+    const i = Math.floor(frame);
+    const a = clip.frames[i], b = clip.frames[Math.min(i + 1, clip.frames.length - 1)];
+    for (let j = from; j < to; j++) {
+      const source = mirror && j >= 3 ? j + (j < 8 ? 5 : -5) : j;
+      const offset = 1 + source * 4;
+      sampleA.fromArray(a, offset).normalize();
+      sampleB.fromArray(b, offset).normalize();
+      sampleA.slerp(sampleB, frame - i);
+      if (mirror) { sampleA.y *= -1; sampleA.z *= -1; }
+      rig[j].quaternion.slerp(sampleA, weight);
+    }
+  }
+
+  function ground(seatBlend, seatHeight) {
+    hip.position.y = 0;
+    root.updateWorldMatrix(true, true);
+    let lowest = Infinity;
+    for (const sole of soles) {
+      const e = sole.matrixWorld.elements;
+      for (let i = 0; i < soleVertices.count; i++) {
+        const y = e[1] * soleVertices.getX(i) + e[5] * soleVertices.getY(i) +
+          e[9] * soleVertices.getZ(i) + e[13];
+        lowest = Math.min(lowest, y);
+      }
+    }
+    const floorHip = (root.matrixWorld.elements[13] - lowest) / root.matrixWorld.elements[5];
+    hip.position.y = seatHeight ? T.MathUtils.lerp(floorHip, seatHeight + .032, seatBlend) : floorHip;
+  }
 
   function applyStaticPose(seated) {
     const thighPitch = seated ? -1.48 : 0, shinPitch = seated ? .07 : 0;
     // Solve hip height from both rigid segments so the shoe soles stay on the floor.
+    hip.quaternion.identity();
     hip.position.y = .053 + .242 * Math.cos(thighPitch) + .227 * Math.cos(shinPitch);
     spine.rotation.set(seated ? -.08 : 0, 0, 0);
     head.rotation.set(0, 0, 0);
     for (const {s, thigh, calf, foot, arm, elbow} of limbs) {
       thigh.rotation.set(thighPitch, s * .055, 0, 'YXZ');
-      calf.rotation.x = shinPitch - thighPitch;
-      foot.rotation.x = -shinPitch;
+      calf.rotation.set(shinPitch - thighPitch, 0, 0);
+      foot.rotation.set(-shinPitch, 0, 0);
       arm.rotation.set(seated ? -.34 : .08, 0, s * (seated ? .12 : .075));
-      elbow.rotation.x = seated ? -1.05 : -.18;
+      elbow.rotation.set(seated ? -1.05 : -.18, 0, 0);
     }
   }
 
@@ -124,62 +175,44 @@ export function makeMannequin() {
       applyStaticPose(lastPersonState?.pose === 'seated');
       return;
     }
-    const walkPhase = motion.walkPhase ?? 0;
-    const sitBlend = T.MathUtils.clamp(motion.sitBlend ?? 0, 0, 1);
-    const walkBlend = T.MathUtils.clamp(motion.walkBlend ?? 0, 0, 1) * (1 - sitBlend);
-    const reachBlend = T.MathUtils.clamp(motion.reachBlend ?? 0, 0, 1);
-    const reachSide = motion.reachSide >= 0 ? 1 : -1;
-    const reachHeightNorm = T.MathUtils.clamp(motion.reachHeightNorm ?? 0.55, 0.2, 0.95);
-    const idleTime = motion.idleTime ?? 0;
+    const seated = unit(motion.sitBlend ?? 0);
+    const walking = unit(motion.walkBlend ?? 0) * (1 - seated);
+    const cycle = (motion.walkPhase ?? 0) / TAU;
+    const idle = (motion.idleTime ?? 0) / clips.idle.duration;
+    layer(clips.idle, idle % 1, 1);
+    layer(clips.walk, cycle % 1, smooth(walking));
+    layer(clips.seated, 0, seated);
 
-    const baseThighPitch = -1.48 * sitBlend;
-    const baseShinPitch = 0.07 * sitBlend;
-    const standHipY = 0.053 + 0.242 * Math.cos(baseThighPitch) + 0.227 * Math.cos(baseShinPitch);
-    const seatHipY = motion.seatHeightNorm
-      ? T.MathUtils.clamp(motion.seatHeightNorm + 0.02, 0.21, 0.36)
-      : 0.053 + 0.242 * Math.cos(-1.48) + 0.227 * Math.cos(0.07);
-    const strideLift = Math.abs(Math.sin(walkPhase)) * 0.015 * walkBlend;
-    hip.position.y = standHipY + (seatHipY - standHipY) * sitBlend + strideLift;
-
-    const breathe = Math.sin(idleTime * 1.9) * 0.014 * (1 - walkBlend);
-    const reachLean = reachBlend * Math.max(0, 0.52 - reachHeightNorm) * 0.45;
-    spine.rotation.set(
-      (-0.08 * sitBlend) - reachLean + breathe,
-      Math.sin(walkPhase) * 0.055 * walkBlend,
-      0
-    );
-    head.rotation.set(
-      T.MathUtils.clamp(motion.headPitch ?? 0, -0.45, 0.45) - breathe * 0.4,
-      T.MathUtils.clamp(motion.headYaw ?? 0, -0.7, 0.7),
-      0
-    );
-
-    for (const { s, thigh, calf, foot, arm, elbow } of limbs) {
-      const phaseOffset = s < 0 ? 0 : Math.PI;
-      const stride = Math.sin(walkPhase + phaseOffset) * 0.48 * walkBlend;
-      const kneeBend = Math.max(0, -Math.sin(walkPhase + phaseOffset)) * 0.65 * walkBlend;
-      const tPitch = baseThighPitch + stride;
-      const sPitch = baseShinPitch + kneeBend;
-      thigh.rotation.set(tPitch, s * 0.055, 0, 'YXZ');
-      calf.rotation.x = sPitch - tPitch;
-      foot.rotation.x = -sPitch;
-
-      const armSwing = -Math.sin(walkPhase + phaseOffset) * 0.42 * walkBlend;
-      const restArmPitch = (0.08 + Math.sin(idleTime * 1.4 + s) * 0.025) * (1 - sitBlend) + (-0.34 * sitBlend);
-      const restElbowPitch = (-0.18 + Math.sin(idleTime * 1.4 + s) * 0.02) * (1 - sitBlend) + (-1.05 * sitBlend);
-      const isReachArm = s === reachSide;
-      const rWeight = isReachArm ? reachBlend : 0;
-      const reachArmPitch = -0.35 - (reachHeightNorm - 0.25) * 1.35;
-      const reachElbowPitch = -0.55 + (reachHeightNorm - 0.5) * 0.35;
-
-      arm.rotation.set(
-        (restArmPitch + armSwing) * (1 - rWeight) + reachArmPitch * rWeight,
-        0,
-        s * ((0.075 * (1 - sitBlend) + 0.12 * sitBlend) * (1 - rWeight) + 0.06 * rWeight)
-      );
-      elbow.rotation.x = restElbowPitch * (1 - rWeight) + reachElbowPitch * rWeight;
+    if (motion.turn != null) {
+      const { angle, progress } = motion.turn;
+      layer(turnClip(angle), progress, blendWindow(progress) * unit(Math.abs(angle) / (Math.PI / 2)));
     }
+    if (motion.inspect != null) {
+      layer(clips.inspect, motion.inspect, blendWindow(motion.inspect), 1, 3);
+    }
+    if (motion.reachBlend > 0) {
+      const u = unit(motion.reachProgress ?? 0);
+      const mirrored = motion.reachSide >= 0;
+      const arm = mirrored ? 11 : 6;
+      const weight = motion.reachBlend * blendWindow(u);
+      layer(clips.reach, u, weight * .55, 1, 3, mirrored);
+      layer(clips.reach, u, weight, arm, arm + 2, mirrored);
+      // Fit the captured gesture to the varying height of the furniture control.
+      const height = T.MathUtils.clamp(motion.reachHeightNorm, .28, .88);
+      rig[arm].quaternion.premultiply(aim.setFromAxisAngle(xAxis, (.63 - height) * 2.7 * weight));
+    }
+
+    gazeAngles.set(motion.headPitch ?? 0, motion.headYaw ?? 0, 0, 'YXZ');
+    head.quaternion.multiply(gaze.setFromEuler(gazeAngles));
+    ground(seated, motion.seatHeightNorm);
   }
 
-  return { root, update, setMotion };
+  function turnProgress(angle, progress) {
+    const clip = turnClip(angle);
+    const end = clip.frames.length - 1;
+    const frame = frameIndex(clip, progress), i = Math.floor(frame);
+    return T.MathUtils.lerp(clip.frames[i][0], clip.frames[Math.min(i + 1, end)][0], frame - i) / clip.frames[end][0];
+  }
+
+  return { root, update, setMotion, turnProgress, walkTravel: clips.walk.travel };
 }

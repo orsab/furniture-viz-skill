@@ -5,7 +5,7 @@ import { createTranslator } from './i18n.mjs';
 import { ROOM_WALL_PRESETS, ROOM_FLOOR_PRESETS } from './presets.mjs';
 import { buildSpecSheetModel, renderSpecSheetDOM, composeSpecSheetPng } from './spec-sheet.mjs';
 
-const { spec, assets, identity, brand = null } = JSON.parse(document.getElementById('study-data').textContent);
+const { spec, assets, identity, brand = null, presentation = null } = JSON.parse(document.getElementById('study-data').textContent);
 const $ = id => document.getElementById(id);
 
 let lang = 'he';
@@ -36,7 +36,7 @@ const makeStudioLocale = tObj => ({
 $('app').innerHTML = `<a id="skip-link" class="skip" href="#inspector"></a>
 <header class="mast"><div class="brand"><img id="brand-logo" class="brand-logo" alt="" hidden><svg id="brand-mark-fallback" aria-hidden="true" viewBox="0 0 32 32"><path d="m4 10 12-6 12 6-12 6z M4 16l12 6 12-6 M4 22l12 6 12-6"/></svg><span id="brand-name"></span></div><span id="brand-sub" class="mast-note"></span><div class="actions"><div class="lang-switch" role="group" id="lang-group"><button id="lang-he" type="button" lang="he" aria-pressed="true">עברית</button><button id="lang-en" type="button" lang="en" aria-pressed="false">EN</button></div><button id="spec-sheet" type="button"></button><button id="export-png" type="button"></button><button id="load" type="button"></button><button id="save" type="button" class="primary"><span id="save-label"></span> <span aria-hidden="true">↓</span></button><input id="file" type="file" accept="application/json,.json" hidden></div></header>
 <main><div class="intro"><div><p class="eyebrow"><span class="rule"></span><span id="eyebrow-study"></span></p><h1 id="name"></h1><p id="description" class="description"></p></div><span class="edition"><i></i><span id="edition-text"></span></span></div>
-<div class="workbench"><section class="preview" aria-label="Furniture preview"><div class="stage"><div id="canvas-wrap"></div><div id="plate-id" class="plate-id" aria-hidden="true"></div><div id="hover-pill" aria-hidden="true" hidden><span class="hover-head"><span class="hover-swatch" aria-hidden="true"></span><strong class="hover-title"></strong><span class="hover-finish"></span></span><span class="hover-action"></span></div><div id="scene-message" role="status"></div></div>
+<div class="workbench"><section class="preview" aria-label="Furniture preview"><div class="stage"><div id="canvas-wrap"></div><div id="plate-id" class="plate-id" aria-hidden="true"></div><div id="hover-pill" aria-hidden="true" hidden><span class="hover-head"><span class="hover-swatch" aria-hidden="true"></span><strong class="hover-title"></strong><span class="hover-finish"></span></span><span class="hover-action"></span></div><div id="stage-context-menu" class="context-menu" role="menu" hidden></div><div id="scene-message" role="status"></div></div>
 <div class="camera-bar" role="toolbar" focusgroup="toolbar wrap" aria-controls="canvas-wrap">
 <div id="group-views" class="toolbar-group" role="group">
 <label class="camera-select"><span id="lbl-cam" class="sr-only"></span><select id="camera"><option value=""></option><option value="studio"></option><option value="front"></option><option value="side"></option><option value="top"></option><option value="back"></option></select></label>
@@ -65,6 +65,7 @@ if (!printSheetHost) {
 }
 
 const estimatesList = [...new Set(spec.evidence.filter(e => e.status === 'estimated').map(e => e.field))];
+const initialSlotCounts = Object.fromEntries(spec.slots.map(s => [s.id, s.finishes.length]));
 const hasInteractivePins = spec.joints.length > 0 || (spec.switches?.length ?? 0) > 0;
 if (!hasInteractivePins) $('pins-toggle').hidden = true;
 const hasXrayFronts = spec.joints.some(j => j.type === 'hinge' || j.type === 'flap');
@@ -76,12 +77,24 @@ if (brand?.logo) {
   $('brand-mark-fallback').hidden = true;
 }
 
-let state = initialState(spec), scene = null, frame = 0, pendingAnimate = false, inspector = null;
+function defaultState() {
+  const next = initialState(spec);
+  if (presentation) {
+    Object.assign(next.joints, presentation.joints);
+    Object.assign(next.options, presentation.options);
+    next.person.visible = presentation.personVisible;
+    next.showDimensions = presentation.showDimensions;
+  }
+  return next;
+}
+
+let state = defaultState(), scene = null, frame = 0, pendingAnimate = false, inspector = null;
 let sceneReady = false, sceneErrorMsg = null, lastHoverInfo = null;
 let ledTempId = '3500';
-let backdropMode = 'studio';
-let roomWallColor = ROOM_WALL_PRESETS[0].hex;
-let roomFloorKind = ROOM_FLOOR_PRESETS[0].id;
+let backdropMode = presentation?.backdrop ?? 'studio';
+const defaultWallColor = presentation?.wallColor ?? ROOM_WALL_PRESETS[0].hex;
+let roomWallColor = defaultWallColor;
+let roomFloorKind = presentation?.floor ?? ROOM_FLOOR_PRESETS[0].id;
 let xrayEnabled = false;
 let aoEnabled = true;
 let personAutoRunning = false;
@@ -156,6 +169,9 @@ const lightingCtrl = {
     scene?.setLedTemp(id);
     inspector?.sync();
     showNotice(tr.t('noticeLedTemp', { kelvin: id }));
+  },
+  onMaterialNotice: (name, slotLabel) => {
+    showNotice(tr.t('matAppliedNotice', { name, slot: slotLabel }));
   }
 };
 
@@ -177,13 +193,17 @@ function syncPersonAutoToolbar() {
   btn.setAttribute('aria-label', title);
 }
 
+function ensurePersonVisible() {
+  if (state.person.visible) return;
+  state.person.visible = true;
+  inspector?.sync();
+  updateFacts();
+  scene?.update(state, { animate: false });
+}
+
 function startPersonAuto() {
   if (!scene) { showNotice(tr.t('noticeWait3d')); return; }
-  if (!state.person.visible) {
-    state.person.visible = true;
-    inspector?.sync();
-    paint('immediate');
-  }
+  ensurePersonVisible();
   personAutoRunning = true;
   personAutoStatus = null;
   scene.setPersonAutoRun(true);
@@ -230,6 +250,8 @@ function applyStaticStrings() {
   $('lang-en').setAttribute('aria-pressed', String(lang === 'en'));
 
   $('spec-sheet').textContent = tr.t('specSheetBtn');
+  $('stage-context-menu').setAttribute('aria-label', tr.t('ctxMenuLabel'));
+  closeContextMenu?.();
   $('export-png').textContent = tr.t('exportPng');
   $('load').textContent = tr.t('loadSetup');
   $('save-label').textContent = tr.t('saveSetup');
@@ -380,17 +402,58 @@ function applyLanguage(nextLang, { announce = false } = {}) {
 $('lang-he').addEventListener('click', () => { if (lang !== 'he') applyLanguage('he', { announce: true }); });
 $('lang-en').addEventListener('click', () => { if (lang !== 'en') applyLanguage('en', { announce: true }); });
 
+function selectInspector(key) {
+  for (const other of ['furniture', 'person']) {
+    $(other).hidden = other !== key;
+    $(`${other}-tab`).setAttribute('aria-pressed', String(other === key));
+  }
+}
 for (const key of ['furniture', 'person']) {
-  $(`${key}-tab`).addEventListener('click', () => {
-    for (const other of ['furniture', 'person']) {
-      $(other).hidden = other !== key;
-      $(`${other}-tab`).setAttribute('aria-pressed', String(other === key));
-    }
-  });
+  $(`${key}-tab`).addEventListener('click', () => selectInspector(key));
+}
+
+function applyPresentation() {
+  $('lighting').value = presentation.lighting;
+  backdropMode = $('backdrop').value = presentation.backdrop;
+  $('room-bar').hidden = backdropMode !== 'room';
+  roomWallColor = $('room-wall-color').value = defaultWallColor;
+  roomFloorKind = $('room-floor').value = presentation.floor;
+  syncRoomSwatches(roomWallColor);
+  selectInspector(presentation.inspector);
+  if (!scene) return;
+  scene.setLighting(presentation.lighting);
+  scene.setRoomStyle({ wallColor: roomWallColor, floorKind: roomFloorKind });
+  scene.setBackdrop(backdropMode);
+  for (const id of ['projection', 'pins-toggle', 'xray-toggle']) $(id).setAttribute('aria-pressed', 'false');
+  $('ao-toggle').setAttribute('aria-pressed', 'true');
+  xrayEnabled = false;
+  aoEnabled = true;
+  ledTempId = '3500';
+  scene.setProjection('perspective');
+  scene.setHotspots(false);
+  scene.setXray(false);
+  scene.setAO(true);
+  scene.setLedTemp(ledTempId);
+  scene.resetPersonPosition(presentation.personStart);
+  scene.update(state, { restoreJoints: true });
+  scene.view('studio', { yaw: presentation.cameraYaw, immediate: true });
+  if (presentation.autoplay && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    personAutoRunning = true;
+    scene.setPersonAutoRun(true, { waitFirst: true });
+    syncPersonAutoToolbar();
+    inspector?.sync();
+  }
 }
 
 $('reset').addEventListener('click', () => {
   stopPersonAuto({ resetPos: true, quiet: true });
+  if (presentation) {
+    state = defaultState();
+    applyPresentation();
+    controls();
+    showNotice(tr.t('noticeDefaultsRestored'));
+    return;
+  }
   state = initialState(spec);
   backdropMode = 'studio';
   xrayEnabled = false;
@@ -649,7 +712,19 @@ $('sheet-png').addEventListener('click', async () => {
 });
 
 $('save').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ format: 'form-study/setup@1', model: identity, state }, null, 2)], { type: 'application/json' });
+  const exportFinishes = {};
+  for (const s of spec.slots) {
+    const f = state.finishes[s.id];
+    const baseCount = initialSlotCounts[s.id] ?? s.finishes.length;
+    if (f.index >= baseCount) {
+      const preset = s.finishes[f.index];
+      exportFinishes[s.id] = { index: 0, tint: f.tint || preset?.color || s.finishes[0].color };
+    } else {
+      exportFinishes[s.id] = { index: f.index, tint: f.tint };
+    }
+  }
+  const exportState = { ...state, finishes: exportFinishes };
+  const blob = new Blob([JSON.stringify({ format: 'form-study/setup@1', model: identity, state: exportState }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url;
   a.download = `${spec.name.replace(/[^a-z\d]+/gi, '-').slice(0, 64) || 'furniture'}-setup.json`;
@@ -807,8 +882,143 @@ function handle3DInteract(action) {
   }
 }
 
+const contextMenuEl = $('stage-context-menu');
+
+function closeContextMenu() {
+  if (!contextMenuEl || contextMenuEl.hidden) return;
+  contextMenuEl.hidden = true;
+  contextMenuEl.replaceChildren();
+}
+
+function addMenuItem(label, onSelect, { primary = false } = {}) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = primary ? 'ctx-item ctx-primary' : 'ctx-item';
+  btn.setAttribute('role', 'menuitem');
+  btn.textContent = label;
+  btn.addEventListener('click', () => {
+    closeContextMenu();
+    onSelect();
+  });
+  contextMenuEl.append(btn);
+}
+
+function openContextMenu(info) {
+  if (!scene || !info) return;
+  closeContextMenu();
+  $('hover-pill').hidden = true;
+
+  if (info.kind === 'floor') {
+    const head = document.createElement('div');
+    head.className = 'ctx-head';
+    head.textContent = tr.term(spec.name);
+    contextMenuEl.append(head);
+    addMenuItem(tr.t('ctxPersonWalkHere'), () => {
+      ensurePersonVisible();
+      scene.commandPerson({ kind: 'walk', targetPoint: info.floorPoint, inspect: false });
+      showNotice(tr.t('noticePersonWalkingHere'));
+    }, { primary: true });
+  } else if (info.kind === 'hit' && info.action) {
+    const { action, partId, slotId, seat, isOpen, isOn } = info;
+    const labelText = tr.term(action.label);
+    const head = document.createElement('div');
+    head.className = 'ctx-head';
+    head.textContent = labelText;
+    contextMenuEl.append(head);
+
+    if (action.type === 'joint') {
+      addMenuItem(tr.t(isOpen ? 'ctxPersonClose' : 'ctxPersonOpen', { label: labelText }), () => {
+        ensurePersonVisible();
+        scene.commandPerson({ kind: 'joint', id: action.id });
+        showNotice(tr.t('noticePersonGoingTo', { label: labelText }));
+      }, { primary: true });
+      addMenuItem(tr.t('ctxPersonWalkHere'), () => {
+        ensurePersonVisible();
+        scene.commandPerson({ kind: 'walk', partId, label: action.label, inspect: false });
+        showNotice(tr.t('noticePersonWalkingHere'));
+      });
+      if (slotId) {
+        const slot = spec.slots.find(s => s.id === slotId);
+        addMenuItem(tr.t('ctxEditFinish', { label: tr.term(slot?.label || labelText) }), () => {
+          inspector?.focusSlot(slotId);
+        });
+      }
+    } else if (action.type === 'switch') {
+      addMenuItem(tr.t(isOn ? 'ctxPersonSwitchOff' : 'ctxPersonSwitchOn', { label: labelText }), () => {
+        ensurePersonVisible();
+        scene.commandPerson({ kind: 'switch', id: action.id });
+        showNotice(tr.t('noticePersonGoingTo', { label: labelText }));
+      }, { primary: true });
+      addMenuItem(tr.t('ctxPersonWalkHere'), () => {
+        ensurePersonVisible();
+        scene.commandPerson({ kind: 'walk', partId, label: action.label, inspect: false });
+        showNotice(tr.t('noticePersonWalkingHere'));
+      });
+    } else if (action.type === 'person') {
+      addMenuItem(personAutoRunning ? tr.t('personStop') : tr.t('personRun'), () => {
+        if (personAutoRunning) stopPersonAuto();
+        else startPersonAuto();
+      }, { primary: true });
+      addMenuItem(tr.t('ctxPersonTogglePose'), () => {
+        handle3DInteract(action);
+      });
+      addMenuItem(tr.t('ctxPersonResetPos'), () => {
+        stopPersonAuto({ resetPos: true, quiet: true });
+        scene.resetPersonPosition();
+      });
+    } else {
+      if (seat) {
+        addMenuItem(tr.t(seat.isSeated ? 'ctxPersonStandUp' : 'ctxPersonSitHere', { label: tr.term(seat.label) }), () => {
+          ensurePersonVisible();
+          scene.commandPerson({ kind: seat.isSeated ? 'stand' : 'sit', seatId: seat.id });
+          showNotice(tr.t('noticePersonGoingTo', { label: tr.term(seat.label) }));
+        }, { primary: true });
+      }
+      addMenuItem(tr.t('ctxPersonInspectHere', { label: labelText }), () => {
+        ensurePersonVisible();
+        scene.commandPerson({ kind: 'walk', partId, label: action.label, inspect: true });
+        showNotice(tr.t('noticePersonGoingTo', { label: labelText }));
+      }, { primary: !seat });
+      if (action.type === 'option') {
+        addMenuItem(tr.t('ctxSwitchOption', { label: labelText }), () => {
+          handle3DInteract(action);
+        });
+      }
+      if (slotId) {
+        const slot = spec.slots.find(s => s.id === slotId);
+        addMenuItem(tr.t('ctxEditFinish', { label: tr.term(slot?.label || labelText) }), () => {
+          inspector?.focusSlot(slotId);
+        });
+      }
+    }
+  } else {
+    return;
+  }
+
+  contextMenuEl.hidden = false;
+  const stage = document.querySelector('.stage');
+  const sw = stage.clientWidth;
+  const sh = stage.clientHeight;
+  const mw = contextMenuEl.offsetWidth;
+  const mh = contextMenuEl.offsetHeight;
+  const tx = Math.max(8, Math.min(info.x, Math.max(8, sw - mw - 8)));
+  const ty = Math.max(8, Math.min(info.y, Math.max(8, sh - mh - 8)));
+  contextMenuEl.style.transform = `translate3d(${Math.round(tx)}px, ${Math.round(ty)}px, 0)`;
+  contextMenuEl.querySelector('.ctx-item')?.focus();
+}
+
+document.addEventListener('pointerdown', e => {
+  if (!contextMenuEl.hidden && !contextMenuEl.contains(e.target)) closeContextMenu();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !contextMenuEl.hidden) closeContextMenu();
+});
+$('canvas-wrap').addEventListener('wheel', () => closeContextMenu(), { passive: true });
+window.addEventListener('resize', closeContextMenu);
+
 applyStaticStrings();
 controls();
+if (presentation) applyPresentation();
 const cameras = [...document.querySelectorAll('.camera-bar button,.camera-bar select')];
 for (const c of cameras) c.setAttribute('aria-disabled', 'true');
 $('export-png').disabled = true;
@@ -845,10 +1055,13 @@ createStudio($('canvas-wrap'), spec, assets, {
     }
     inspector?.sync();
   },
+  onContextMenu(info) {
+    openContextMenu(info);
+  },
   onPersonAutoAction(evt) {
     if (!evt) return;
-    if (evt.phase === 'stopped') {
-      personAutoRunning = false;
+    if (evt.phase === 'stopped' || evt.phase === 'directed_done') {
+      if (evt.phase === 'stopped') personAutoRunning = false;
       personAutoStatus = null;
       syncPersonAutoToolbar();
       inspector?.sync();
@@ -884,10 +1097,12 @@ createStudio($('canvas-wrap'), spec, assets, {
         updateFacts();
         inspector?.sync();
         showNotice(tr.t('personActStand'));
-      } else if (evt.actionType === 'inspect') {
+      } else if (evt.actionType === 'inspect' || evt.actionType === 'walk') {
         personAutoStatus = { key: 'personActInspect', label: evt.label };
         inspector?.sync();
-        showNotice(tr.t('personActInspect', { label: tr.term(evt.label) }));
+        if (evt.actionType === 'inspect') {
+          showNotice(tr.t('personActInspect', { label: tr.term(evt.label) }));
+        }
       }
     }
   }
@@ -895,8 +1110,11 @@ createStudio($('canvas-wrap'), spec, assets, {
   scene = s;
   sceneReady = true;
   if (!s.hasXrayTargets) $('xray-toggle').hidden = true;
-  s.update(state, { animate: false });
-  s.view('studio');
+  if (presentation) applyPresentation();
+  else {
+    s.update(state, { animate: false });
+    s.view('studio');
+  }
   $('scene-message').hidden = true;
   for (const c of cameras) c.removeAttribute('aria-disabled');
   $('export-png').disabled = false;

@@ -1,4 +1,5 @@
 import { axes } from '../lib/coordinates.mjs';
+import { extractPaletteFromRgba, parseMaterialsFromText } from '../lib/materials-parse.mjs';
 
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -46,7 +47,7 @@ function color(host, labelText, value, change) {
   return v => { box.value = v; code.textContent = v.toUpperCase(); };
 }
 
-function measure(host, labelText, unit, value, min, max, change, tr, actionBtn = null) {
+function measure(host, labelText, unit, value, min, max, change, tr) {
   const group = el('div', 'measure'), label = el('label', 'measure-entry'), entry = el('input'), suffix = el('span', 'suffix', unit);
   entry.type = 'number';
   entry.step = '1';
@@ -56,7 +57,6 @@ function measure(host, labelText, unit, value, min, max, change, tr, actionBtn =
   entry.value = String(value);
   const title = el('span', 'field-title', labelText);
   label.append(title, entry, suffix);
-  if (actionBtn) label.append(actionBtn);
   group.append(label);
   let setVal;
   if (min === max) {
@@ -109,7 +109,7 @@ function measure(host, labelText, unit, value, min, max, change, tr, actionBtn =
     };
   }
   host.append(group);
-  return { group, setVal };
+  return { setVal };
 }
 
 const SURFACE_KEY = {
@@ -199,6 +199,171 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
     draw();
     visibility.push(refresh);
     syncers.push(syncPalette);
+
+    // Collapsible importer to parse text lists or sample sketch/palette images offline.
+    const matDetails = el('details', 'mat-import');
+    const matSum = el('summary', null, tr.t('matImportTitle'));
+    const matBody = el('div', 'mat-import-body');
+    matDetails.append(matSum, matBody);
+    matBody.append(el('p', 'hint', tr.t('matImportHint')));
+
+    const textLabel = el('label', 'field');
+    textLabel.append(el('span', 'field-title', tr.t('matTextLabel')));
+    const textInput = el('textarea', 'mat-text-input');
+    textInput.rows = 2;
+    textInput.placeholder = tr.t('matTextPlaceholder');
+    textLabel.append(textInput);
+
+    const surfaceWrap = el('label', 'field');
+    surfaceWrap.append(el('span', 'field-title', tr.t('matSurfaceLabel')));
+    const surfaceSel = el('select');
+    for (const kind of ['paint', 'wood', 'metal', 'fabric']) {
+      surfaceSel.add(new Option(tr.t(SURFACE_KEY[kind]), kind));
+    }
+
+    const btnRow = el('div', 'mat-import-row');
+    const parseBtn = el('button', 'chip-button', tr.t('matParseBtn'));
+    parseBtn.type = 'button';
+    const sketchBtn = el('button', 'chip-button', tr.t('matSketchBtn'));
+    sketchBtn.type = 'button';
+    const fileInput = el('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/png,image/jpeg,image/webp';
+    fileInput.hidden = true;
+    btnRow.append(parseBtn, sketchBtn, fileInput);
+
+    const sketchCanvas = el('canvas', 'mat-import-canvas');
+    sketchCanvas.hidden = true;
+    const sketchHint = el('p', 'hint', tr.t('matSketchHint'));
+    sketchHint.hidden = true;
+    const candHead = el('span', 'field-title', tr.t('matDetectedLabel'));
+    candHead.hidden = true;
+    const candStatus = el('p', 'hint mat-import-status');
+    candStatus.hidden = true;
+    const candList = el('div', 'mat-candidates');
+
+    let loadedSketchPixels = null;
+
+    function applyCandidate(cand) {
+      const targetSlot = cand.slotId
+        ? (spec.slots.find(s => s.id === cand.slotId) || selected)
+        : selected;
+      let idx = targetSlot.finishes.findIndex(
+        f => (f.color.toLowerCase() === cand.color.toLowerCase() && f.surface === cand.surface) ||
+          f.name.toLowerCase() === cand.name.toLowerCase()
+      );
+      if (idx < 0) {
+        if (targetSlot.finishes.length >= 64) targetSlot.finishes.pop();
+        targetSlot.finishes.push({ name: cand.name, color: cand.color, surface: cand.surface });
+        idx = targetSlot.finishes.length - 1;
+      }
+      if (targetSlot.id !== selected.id) {
+        selected = targetSlot;
+        currentSlotId = targetSlot.id;
+        slotSelect.value = targetSlot.id;
+      }
+      state.finishes[targetSlot.id] = { index: idx, tint: null };
+      draw();
+      refresh(visibleParts());
+      onChange('immediate');
+      candStatus.textContent = tr.t('matAddedToSlot', { name: cand.name });
+      candStatus.hidden = false;
+      lightingCtrl?.onMaterialNotice?.(cand.name, tr.term(targetSlot.label));
+    }
+
+    function renderCandidates(items) {
+      candList.replaceChildren();
+      if (!items.length) {
+        candHead.hidden = true;
+        candStatus.textContent = tr.t('matEmptyResult');
+        candStatus.hidden = false;
+        return;
+      }
+      candHead.hidden = false;
+      candStatus.hidden = true;
+      for (const cand of items) {
+        const chip = el('button', 'mat-chip');
+        chip.type = 'button';
+        const dot = el('span', 'mat-chip-dot');
+        dot.style.backgroundColor = cand.color;
+        const surfLabel = tr.t(SURFACE_KEY[cand.surface] || cand.surface);
+        chip.append(dot, el('span', null, `${cand.name} (${surfLabel})`));
+        chip.addEventListener('click', () => applyCandidate(cand));
+        candList.append(chip);
+      }
+    }
+
+    parseBtn.addEventListener('click', () => {
+      const found = parseMaterialsFromText(textInput.value, { existingSlots: spec.slots });
+      renderCandidates(found);
+    });
+
+    sketchBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+      const objUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxDim = 360;
+          const ratio = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+          const w = Math.max(1, Math.round(img.naturalWidth * ratio));
+          const h = Math.max(1, Math.round(img.naturalHeight * ratio));
+          sketchCanvas.width = w;
+          sketchCanvas.height = h;
+          const ctx = sketchCanvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const data = ctx.getImageData(0, 0, w, h);
+          loadedSketchPixels = { rgba: data.data, width: w, height: h };
+          sketchCanvas.hidden = false;
+          sketchHint.hidden = false;
+          renderCandidates(extractPaletteFromRgba(data.data, w, h, {
+            maxColors: 6,
+            surface: surfaceSel.value,
+            lang: tr.lang
+          }));
+        } catch {
+          candStatus.textContent = tr.t('matSketchError');
+          candStatus.hidden = false;
+        } finally {
+          URL.revokeObjectURL(objUrl);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        candStatus.textContent = tr.t('matSketchError');
+        candStatus.hidden = false;
+      };
+      img.src = objUrl;
+    });
+
+    surfaceSel.addEventListener('change', () => {
+      if (!loadedSketchPixels) return;
+      renderCandidates(extractPaletteFromRgba(loadedSketchPixels.rgba, loadedSketchPixels.width, loadedSketchPixels.height, {
+        maxColors: 6,
+        surface: surfaceSel.value,
+        lang: tr.lang
+      }));
+    });
+
+    sketchCanvas.addEventListener('click', e => {
+      if (!loadedSketchPixels) return;
+      const rect = sketchCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const x = Math.min(sketchCanvas.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * sketchCanvas.width)));
+      const y = Math.min(sketchCanvas.height - 1, Math.max(0, Math.floor(((e.clientY - rect.top) / rect.height) * sketchCanvas.height)));
+      const i = (y * sketchCanvas.width + x) * 4;
+      const hex = `#${[loadedSketchPixels.rgba[i], loadedSketchPixels.rgba[i + 1], loadedSketchPixels.rgba[i + 2]]
+        .map(v => v.toString(16).padStart(2, '0')).join('')}`;
+      applyCandidate({ name: hex.toUpperCase(), color: hex, surface: surfaceSel.value, slotId: null });
+    });
+
+    surfaceWrap.append(surfaceSel);
+    matBody.append(textLabel, surfaceWrap, btnRow, sketchCanvas, sketchHint, candHead, candStatus, candList);
+    body.append(matDetails);
+
     finishesController = {
       focusSlot(slotId) {
         const found = spec.slots.find(s => s.id === slotId);
@@ -245,62 +410,17 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
 
   if (spec.joints.length) {
     const { body } = section(furniture, 'joints', tr.t('doorsAndMovement'), true, openSet);
-    if (spec.joints.length >= 2) {
-      const row = el('div', 'joint-bulk');
-      const openAll = el('button', 'chip-button', tr.t('openAll'));
-      openAll.type = 'button';
-      const closeAll = el('button', 'chip-button', tr.t('closeAll'));
-      closeAll.type = 'button';
-      openAll.addEventListener('click', () => {
-        for (const j of spec.joints) state.joints[j.id] = 1;
-        sync();
+    const row = el('div', 'joint-bulk');
+    for (const [label, target] of [['openAll', 1], ['closeAll', 0]]) {
+      const button = el('button', 'chip-button', tr.t(label));
+      button.type = 'button';
+      button.addEventListener('click', () => {
+        for (const { id } of spec.joints) state.joints[id] = target;
         onChange('animate');
       });
-      closeAll.addEventListener('click', () => {
-        for (const j of spec.joints) state.joints[j.id] = 0;
-        sync();
-        onChange('animate');
-      });
-      row.append(openAll, closeAll);
-      body.append(row);
+      row.append(button);
     }
-    for (const j of spec.joints) {
-      const group = el('fieldset', 'unboxed'), hint = el('small', 'hint', tr.t('notVisibleHint'));
-      const jLabel = tr.term(j.label);
-      group.append(el('legend', 'sr-only', jLabel));
-      const toggleBtn = el('button', 'joint-toggle');
-      toggleBtn.type = 'button';
-      const syncToggleLabel = pct => {
-        const isOpen = pct > 2;
-        toggleBtn.textContent = isOpen ? tr.t('close') : tr.t('open');
-        toggleBtn.setAttribute('aria-label', tr.t(isOpen ? 'closeActionLabel' : 'openActionLabel', { label: jLabel }));
-      };
-      const pctInit = Math.round(state.joints[j.id] * 100);
-      syncToggleLabel(pctInit);
-      const ctrl = measure(group, jLabel, '%', pctInit, 0, 100, v => {
-        state.joints[j.id] = v / 100;
-        syncToggleLabel(v);
-        onChange('immediate');
-      }, tr, toggleBtn);
-      toggleBtn.addEventListener('click', () => {
-        const next = state.joints[j.id] > 0.02 ? 0 : 1;
-        state.joints[j.id] = next;
-        const pct = Math.round(next * 100);
-        ctrl.setVal(pct);
-        syncToggleLabel(pct);
-        onChange('animate');
-      });
-      body.append(group, hint);
-      visibility.push(parts => {
-        group.disabled = !parts.some(p => p.joint === j.id) && !(state.inscription && spec.inscription?.joint === j.id);
-        hint.hidden = !group.disabled;
-      });
-      syncers.push(() => {
-        const pct = Math.round(state.joints[j.id] * 100);
-        ctrl.setVal(pct);
-        syncToggleLabel(pct);
-      });
-    }
+    body.append(row);
   }
 
   if (spec.switches?.length) {

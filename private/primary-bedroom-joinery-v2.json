@@ -390,7 +390,7 @@
         "center": [
           760,
           1840,
-          -244
+          -350
         ],
         "color": "#ffdbab",
         "intensity": 7,
@@ -5839,7 +5839,7 @@
     {
       "field": "mirror-leds",
       "source": "Furniture drawing, PDF page 1 · B exterior LED detail",
-      "note": "Two vertical LED channels flank the mirror; detail indicates 12×8 mm grooves and 122–272 cm levels. The control location and lighting intensity are for visual demonstration only.",
+      "note": "Two vertical LED channels flank the mirror; detail indicates 12×8 mm grooves and 122–272 cm levels. Light source is recessed inside the vanity alcove behind the flanking stiles, and control location/intensity are for visual demonstration only.",
       "status": "estimated"
     },
     {

@@ -1,0 +1,13 @@
+{
+  "lighting": "gallery",
+  "backdrop": "room",
+  "wallColor": "#d4cec4",
+  "floor": "concrete",
+  "cameraYaw": -15,
+  "inspector": "furniture",
+  "personVisible": false,
+  "showDimensions": true,
+  "autoplay": false,
+  "options": { "preview-scene": "Joinery only" },
+  "joints": {}
+}

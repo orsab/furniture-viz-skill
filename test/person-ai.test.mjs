@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {
   DEFAULT_ACTION_DELAY_MS,
+  AUTO_CLOSE_HOLD_SEC,
+  JOINT_AUTO_CLOSE_SEC,
   detectSeats,
   computeInteractionTarget,
+  clampPersonOutsideObstacles,
+  resolveWalkStandPoint,
   planFloorPath,
   pickNextPersonAction
 } from '../app/person-ai.mjs';
+import { createKinematics, makePersonOBB } from '../lib/kinematics.mjs';
+import { initialState } from '../lib/state.mjs';
 import { resolveVec } from '../lib/coordinates.mjs';
+import { Box3 } from 'three';
+import { makeMannequin } from '../app/mannequin.mjs';
 
 function rotateXYZ([x, y, z], [rx, ry, rz]) {
   const rad = d => (d * Math.PI) / 180;
@@ -148,4 +156,160 @@ test('pickNextPersonAction avoids repeating last action and handles seated state
 
   const standFallback = pickNextPersonAction({ candidates: [], isSeated: true });
   assert.equal(standFallback.kind, 'stand');
+});
+
+test('resolveWalkStandPoint clamps far points and nudges points out of cabinet obstacles', () => {
+  const staticBoxes = [
+    { id: 'body', minX: -500, maxX: 500, minY: 0, maxY: 900, minZ: -300, maxZ: 300 }
+  ];
+  const bounds = { min: { x: -500, y: 0, z: -300 }, max: { x: 500, y: 900, z: 300 } };
+
+  const open = resolveWalkStandPoint([120, 900], staticBoxes, bounds, 240);
+  assert.equal(open.standX, 120);
+  assert.equal(open.standZ, 900);
+
+  const far = resolveWalkStandPoint([9000, 9000], staticBoxes, bounds, 240);
+  assert.equal(far.standX, 2700);
+  assert.equal(far.standZ, 2500);
+
+  const inside = resolveWalkStandPoint([0, 260], staticBoxes, bounds, 240);
+  assert.ok(inside.standZ >= 540, `Expected click inside padded front zone to nudge to >= 540, got ${inside.standZ}`);
+});
+
+test('person filters out hidden internal drawers behind closed doors and picks sweep-clear stand spots', async () => {
+  const wardrobe = JSON.parse(await fs.readFile(new URL('../private/primary-bedroom-joinery-v2.json', import.meta.url), 'utf8'));
+  const linea = JSON.parse(await fs.readFile(new URL('../examples/linea.json', import.meta.url), 'utf8'));
+
+  const kinW = createKinematics(wardrobe);
+  const wState = initialState(wardrobe);
+  kinW.setDimensionsAndOptions(wState.dimensions, wState.options);
+
+  // At rest, internal drawers behind closed doors are blocked around 13-14%; filtering requires >= 50% opening when blocked
+  const eligibleIds = [];
+  for (const j of wardrobe.joints) {
+    const res = kinW.resolveJointMotion(j.id, 0, 1, wState.joints, { ignorePerson: true });
+    if (res.blocked && Math.abs(res.progress - 0) < 0.5) continue;
+    eligibleIds.push(j.id);
+  }
+  assert.equal(eligibleIds.some(id => id.includes('drawer')), false, 'Hidden drawers behind closed doors must be skipped');
+  assert.ok(eligibleIds.includes('b-door-1'));
+
+  const wBoxes = makeBoxesFromSpec(wardrobe);
+  const bDoor = wardrobe.joints.find(j => j.id === 'b-door-1');
+  const bDoorTarget = computeInteractionTarget({
+    kind: 'joint',
+    id: bDoor.id,
+    label: bDoor.label,
+    def: bDoor,
+    targetBoxes: wBoxes.filter(b => b.jointId === bDoor.id),
+    staticBoxes: wBoxes.filter(b => !b.jointId),
+    pivot: bDoor.pivot,
+    isStandClear: (sx, sz, yaw) => kinW.isPersonClearOfJointSweep(
+      bDoor.id,
+      0,
+      1,
+      wState.joints,
+      makePersonOBB({ x: sx, z: sz, yaw, height: 1700, build: 'regular', seated: false })
+    )
+  });
+  const chosenW = makePersonOBB({ x: bDoorTarget.standX, z: bDoorTarget.standZ, yaw: bDoorTarget.faceYaw, height: 1700, build: 'regular', seated: false });
+  assert.equal(kinW.isPersonClearOfJointSweep(bDoor.id, 0, 1, wState.joints, chosenW), true);
+
+  const kinL = createKinematics(linea);
+  const lState = initialState(linea);
+  kinL.setDimensionsAndOptions(lState.dimensions, lState.options);
+  const lBoxes = makeBoxesFromSpec(linea);
+  const lDoor = linea.joints.find(j => j.id === 'door');
+  const lDoorTarget = computeInteractionTarget({
+    kind: 'joint',
+    id: lDoor.id,
+    label: lDoor.label,
+    def: lDoor,
+    targetBoxes: lBoxes.filter(b => b.jointId === lDoor.id),
+    staticBoxes: lBoxes.filter(b => !b.jointId),
+    pivot: lDoor.pivot,
+    isStandClear: (sx, sz, yaw) => kinL.isPersonClearOfJointSweep(
+      lDoor.id,
+      0,
+      1,
+      lState.joints,
+      makePersonOBB({ x: sx, z: sz, yaw, height: 1700, build: 'regular', seated: false })
+    )
+  });
+  const chosenL = makePersonOBB({ x: lDoorTarget.standX, z: lDoorTarget.standZ, yaw: lDoorTarget.faceYaw, height: 1700, build: 'regular', seated: false });
+  assert.equal(kinL.isPersonClearOfJointSweep(lDoor.id, 0, 1, lState.joints, chosenL), true);
+});
+
+test('walking rolls through heel strike and toe-off without sinking or floating', () => {
+  const person = makeMannequin();
+  person.update({ visible: true, height: 1700, build: 'average', yaw: 0,
+    skin: '#ad8265', top: '#55756e', bottom: '#565755' });
+  const soles = [];
+  person.root.traverse(object => {
+    if (object.isMesh && object.material.color.getHex() === 0x57524d) soles.push(object);
+  });
+  assert.equal(soles.length, 2);
+  const floor = new Box3();
+  const pitches = [];
+  for (let i = 0; i < 60; i++) {
+    person.setMotion({ walkPhase: i * Math.PI / 30, walkBlend: 1 });
+    person.root.updateMatrixWorld(true);
+    assert.ok(Math.abs(Math.min(...soles.map(sole => floor.setFromObject(sole, true).min.y))) < 3,
+      `one shoe touches the floor at frame ${i}`);
+    pitches.push(soles[0].parent.getWorldDirection(new (person.root.position.constructor)()).y);
+  }
+  assert.ok(Math.min(...pitches) < -.08 && Math.max(...pitches) > .08, 'heel and toe lead at different points in the stride');
+});
+
+test('planFloorPath never walks through open doors even on 230+ part models or when start is inside door padding', async () => {
+  assert.ok(AUTO_CLOSE_HOLD_SEC >= 2 && AUTO_CLOSE_HOLD_SEC <= 5);
+  assert.ok(JOINT_AUTO_CLOSE_SEC >= 4 && JOINT_AUTO_CLOSE_SEC <= 10);
+
+  const wardrobe = JSON.parse(await fs.readFile(new URL('../private/primary-bedroom-joinery-v2.json', import.meta.url), 'utf8'));
+  const boxes = makeBoxesFromSpec(wardrobe);
+
+  // Simulate b-door-1 swung 90 degrees open into the room (+Z from -230 to +506 at X = -720)
+  const openDoorBox = {
+    id: 'b-door-1-open-leaf',
+    slotId: 'fronts',
+    slotLabel: 'Fronts',
+    jointId: 'b-door-1',
+    minX: -742,
+    maxX: -700,
+    minY: 80,
+    maxY: 2380,
+    minZ: -230,
+    maxZ: 510
+  };
+  const liveBoxes = [
+    ...boxes.filter(b => b.jointId !== 'b-door-1'),
+    openDoorBox
+  ];
+
+  // Start close to the left of the open door (within 240mm padding) and walk to the right side of the open door
+  const start = [-910, 220];
+  const goal = [-420, 220];
+  const path = planFloorPath(start, goal, liveBoxes, 240);
+  assert.ok(path.length >= 2, `Expected multi-waypoint detour around open door, got ${JSON.stringify(path)}`);
+
+  // Verify no segment of the path crosses the physical open door panel
+  let prev = start;
+  for (const wp of path) {
+    // Check 20 sample points along each segment against the physical open door leaf
+    for (let k = 0; k <= 20; k++) {
+      const u = k / 20;
+      const px = prev[0] + (wp[0] - prev[0]) * u;
+      const pz = prev[1] + (wp[1] - prev[1]) * u;
+      const insideLeaf = px > openDoorBox.minX - 30 && px < openDoorBox.maxX + 30 &&
+                         pz > openDoorBox.minZ - 10 && pz < openDoorBox.maxZ + 30;
+      assert.equal(insideLeaf, false, `Path segment [${prev}] -> [${wp}] passed through open door leaf at (${px.toFixed(1)}, ${pz.toFixed(1)})`);
+    }
+    prev = wp;
+  }
+
+  // Verify clampPersonOutsideObstacles pushes a point out of the open door leaf
+  const clamped = clampPersonOutsideObstacles(-720, 200, [openDoorBox], 165);
+  const stillInside = clamped.x > openDoorBox.minX - 160 && clamped.x < openDoorBox.maxX + 160 &&
+                      clamped.z > openDoorBox.minZ - 160 && clamped.z < openDoorBox.maxZ + 160;
+  assert.equal(stillInside, false, 'clampPersonOutsideObstacles must push person clear of open door');
 });

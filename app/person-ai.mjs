@@ -1,4 +1,6 @@
 export const DEFAULT_ACTION_DELAY_MS = 10000;
+export const AUTO_CLOSE_HOLD_SEC = 2.6;
+export const JOINT_AUTO_CLOSE_SEC = 6.5;
 
 const SEAT_RE = /chair|stool|bench|sofa|couch|seat|cushion|ottoman|armchair|loveseat|banquette|pouf|כיסא|כסא|ספסל|ספה|מושב|הדום/i;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -146,7 +148,9 @@ function buildWalkObstacles(staticBoxes, personRadius = 240) {
       minX: b.minX - personRadius,
       maxX: b.maxX + personRadius,
       minZ: b.minZ - personRadius,
-      maxZ: b.maxZ + personRadius
+      maxZ: b.maxZ + personRadius,
+      jointId: b.jointId ?? null,
+      span: Math.max(sx, sz)
     });
   }
   return obs;
@@ -159,7 +163,36 @@ function pointInsideAny(px, pz, boxes, eps = 1) {
   return false;
 }
 
-export function computeInteractionTarget({ kind, id, label, def, targetBoxes, staticBoxes = [], pivot = null }) {
+export function clampPersonOutsideObstacles(x, z, boxes = [], personRadius = 185) {
+  let sx = x;
+  let sz = z;
+  const obs = buildWalkObstacles(boxes, personRadius);
+  for (let pass = 0; pass < 5; pass++) {
+    const hit = obs.find(r => sx > r.minX + 1 && sx < r.maxX - 1 && sz > r.minZ + 1 && sz < r.maxZ - 1);
+    if (!hit) break;
+    const escapes = [
+      [hit.minX - 6, sz, Math.abs(sx - (hit.minX - 6))],
+      [hit.maxX + 6, sz, Math.abs(sx - (hit.maxX + 6))],
+      [sx, hit.minZ - 6, Math.abs(sz - (hit.minZ - 6))],
+      [sx, hit.maxZ + 6, Math.abs(sz - (hit.maxZ + 6))]
+    ].sort((a, b) => a[2] - b[2]);
+    sx = escapes[0][0];
+    sz = escapes[0][1];
+  }
+  return { x: sx, z: sz };
+}
+
+export function computeInteractionTarget({
+  kind,
+  id,
+  label,
+  def,
+  targetBoxes,
+  staticBoxes = [],
+  movingObstacles = [],
+  pivot = null,
+  isStandClear = null
+}) {
   if (!targetBoxes?.length) return null;
   const overall = unionBoxes(targetBoxes);
   const hw = targetBoxes.filter(b => b.slotId === 'hardware' || Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) <= 220);
@@ -169,7 +202,7 @@ export function computeInteractionTarget({ kind, id, label, def, targetBoxes, st
   const ty = aim.cy;
   const tz = aim.cz;
 
-  const testBoxes = (staticBoxes || []).filter(b => b.minY <= 2100 && b.maxY >= 80);
+  const testBoxes = [...(staticBoxes || []), ...(movingObstacles || [])].filter(b => b.minY <= 2100 && b.maxY >= 80);
   const pickClearDir = dirs => {
     for (const [cx, cz] of dirs) {
       const px = tx + cx * 480;
@@ -200,33 +233,85 @@ export function computeInteractionTarget({ kind, id, label, def, targetBoxes, st
     [nx, nz] = pickClearDir([[0, 1], [1, 0], [-1, 0], [0, -1]]);
   }
 
-  const offsetDist = kind === 'switch'
-    ? 460
-    : (def?.type === 'slide' || def?.type === 'slide-x')
-      ? 600
-      : 560;
+  // Include targetBoxes in obs so stand candidates never land inside an already-open door or drawer leaf.
+  const obs = buildWalkObstacles([...(staticBoxes || []), ...(movingObstacles || []), ...targetBoxes], 220);
+  let latX = 0, latZ = 0;
+  if (Math.abs(nz) > 0.5) {
+    latX = Array.isArray(pivot) ? (Math.sign(tx - pivot[0]) || 1) : 1;
+  } else {
+    latZ = Array.isArray(pivot) ? (Math.sign(tz - pivot[2]) || 1) : 1;
+  }
 
-  let standX = tx + nx * offsetDist;
-  let standZ = tz + nz * offsetDist;
+  const candidatesXZ = [];
+  if (kind === 'joint' && def?.type === 'hinge') {
+    const leafSpan = Math.max(overall.sx, overall.sz);
+    candidatesXZ.push(
+      [tx + nx * 520 + latX * 260, tz + nz * 520 + latZ * 260],
+      [tx + nx * 680 + latX * 320, tz + nz * 680 + latZ * 320],
+      [tx + nx * 820 + latX * 280, tz + nz * 820 + latZ * 280],
+      [tx + nx * Math.max(660, leafSpan + 280), tz + nz * Math.max(660, leafSpan + 280)],
+      [tx + nx * 680 - latX * 300, tz + nz * 680 - latZ * 300],
+      [tx + nx * Math.max(850, leafSpan + 380), tz + nz * Math.max(850, leafSpan + 380)],
+      [overall.cx + nx * 560, overall.cz + nz * 560],
+      [overall.cx - nx * 560, overall.cz - nz * 560]
+    );
+  } else if (kind === 'joint' && (def?.type === 'slide' || def?.type === 'slide-x')) {
+    const pullDist = Math.abs(def.travel) + 340;
+    const perpX = -nz, perpZ = nx;
+    candidatesXZ.push(
+      [tx + nx * (pullDist * 0.78) + perpX * 220, tz + nz * (pullDist * 0.78) + perpZ * 220],
+      [tx + nx * (pullDist * 0.78) - perpX * 220, tz + nz * (pullDist * 0.78) - perpZ * 220],
+      [tx + nx * pullDist, tz + nz * pullDist],
+      [tx + nx * (pullDist + 180), tz + nz * (pullDist + 180)]
+    );
+  } else if (kind === 'joint' && def?.type === 'flap') {
+    const perpX = -nz, perpZ = nx;
+    candidatesXZ.push(
+      [tx + nx * 680, tz + nz * 680],
+      [tx + nx * 580 + perpX * 260, tz + nz * 580 + perpZ * 260],
+      [tx + nx * 580 - perpX * 260, tz + nz * 580 - perpZ * 260],
+      [tx + nx * 860, tz + nz * 860]
+    );
+  } else {
+    const baseDist = kind === 'switch' ? 460 : 560;
+    candidatesXZ.push(
+      [tx + nx * baseDist, tz + nz * baseDist],
+      [tx + nx * (baseDist + 160), tz + nz * (baseDist + 160)]
+    );
+  }
 
-  if (kind === 'joint' && def?.type === 'hinge' && Array.isArray(pivot)) {
-    if (Math.abs(nz) > 0.5) {
-      const s = Math.sign(tx - pivot[0]) || 1;
-      standX += s * 140;
-    } else {
-      const s = Math.sign(tz - pivot[2]) || 1;
-      standZ += s * 140;
+  let chosen = null;
+  // 1. Prefer a spot clear of floor obstacles AND outside the joint sweep arc.
+  for (const [cx, cz] of candidatesXZ) {
+    if (pointInsideAny(cx, cz, obs, 4)) continue;
+    const yaw = Math.atan2(tx - cx, tz - cz);
+    if (!isStandClear || isStandClear(cx, cz, yaw)) {
+      chosen = [cx, cz];
+      break;
     }
   }
-
-  // Nudge outward if stand spot still touches carcass obstacle padding.
-  const obs = buildWalkObstacles(staticBoxes, 220);
-  for (let step = 0; step < 3; step++) {
-    if (!pointInsideAny(standX, standZ, obs, 4)) break;
-    standX += nx * 160;
-    standZ += nz * 160;
+  // 2. Fallback: first spot clear of static + open obstacles.
+  if (!chosen) {
+    for (const [cx, cz] of candidatesXZ) {
+      if (!pointInsideAny(cx, cz, obs, 4)) {
+        chosen = [cx, cz];
+        break;
+      }
+    }
+  }
+  // 3. Final fallback: primary offset nudged outward out of obstacle padding.
+  if (!chosen) {
+    let sx = candidatesXZ[0][0], sz = candidatesXZ[0][1];
+    for (let step = 0; step < 5; step++) {
+      if (!pointInsideAny(sx, sz, obs, 4)) break;
+      sx += nx * 160;
+      sz += nz * 160;
+    }
+    const clamped = clampPersonOutsideObstacles(sx, sz, [...(staticBoxes || []), ...(movingObstacles || []), ...targetBoxes], 210);
+    chosen = [clamped.x, clamped.z];
   }
 
+  const [standX, standZ] = chosen;
   const faceYaw = Math.atan2(tx - standX, tz - standZ);
   const reachY = clamp(ty, 450, 1650);
   return { kind, id, label, tx, ty, tz, standX, standZ, faceYaw, nx, nz, reachY };
@@ -266,23 +351,24 @@ function segmentBlocked(a, b, obs) {
   return false;
 }
 
-export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240) {
-  const start = [fromXZ[0], fromXZ[1]];
-  const goal = [toXZ[0], toXZ[1]];
-  if (Math.hypot(goal[0] - start[0], goal[1] - start[1]) < 5) return [goal];
+function solveShortestPath(start, goal, obsList) {
+  if (!segmentBlocked(start, goal, obsList)) return [goal];
 
-  const obs = buildWalkObstacles(staticBoxes, personRadius);
-  // Exclude obstacles enclosing start or goal so edge departures never lock.
-  const activeObs = obs.filter(r => !pointInsideAny(start[0], start[1], [r], 0) && !pointInsideAny(goal[0], goal[1], [r], 0));
-  if (!segmentBlocked(start, goal, activeObs)) return [goal];
+  // Prioritize moving door/drawer obstacles first, then larger structural panels, so open doors always contribute corner waypoints.
+  const sortedObs = [...obsList].sort((a, b) => {
+    const aj = a.jointId ? 1 : 0;
+    const bj = b.jointId ? 1 : 0;
+    if (aj !== bj) return bj - aj;
+    return (b.span || 0) - (a.span || 0);
+  });
 
   const rawCandidates = [
     [start[0], goal[1]],
     [goal[0], start[1]]
   ];
-  const margin = 40;
+  const margin = 36;
   let allMinX = Infinity, allMaxX = -Infinity, allMinZ = Infinity, allMaxZ = -Infinity;
-  for (const r of activeObs) {
+  for (const r of sortedObs) {
     if (r.minX < allMinX) allMinX = r.minX;
     if (r.maxX > allMaxX) allMaxX = r.maxX;
     if (r.minZ < allMinZ) allMinZ = r.minZ;
@@ -293,25 +379,43 @@ export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240
       [r.minX - margin, r.maxZ + margin],
       [r.maxX + margin, r.maxZ + margin]
     );
+    if (r.jointId) {
+      rawCandidates.push(
+        [r.minX - 110, r.minZ - 110],
+        [r.maxX + 110, r.minZ - 110],
+        [r.minX - 110, r.maxZ + 110],
+        [r.maxX + 110, r.maxZ + 110],
+        [(r.minX + r.maxX) * 0.5, r.maxZ + 110],
+        [(r.minX + r.maxX) * 0.5, r.minZ - 110],
+        [r.maxX + 110, (r.minZ + r.maxZ) * 0.5],
+        [r.minX - 110, (r.minZ + r.maxZ) * 0.5]
+      );
+    }
   }
   if (Number.isFinite(allMinX)) {
+    const midX = (allMinX + allMaxX) * 0.5;
+    const midZ = (allMinZ + allMaxZ) * 0.5;
     rawCandidates.push(
       [allMinX - 180, allMinZ - 180],
       [allMaxX + 180, allMinZ - 180],
       [allMinX - 180, allMaxZ + 180],
-      [allMaxX + 180, allMaxZ + 180]
+      [allMaxX + 180, allMaxZ + 180],
+      [midX, allMaxZ + 260],
+      [allMaxX + 260, midZ],
+      [allMinX - 260, midZ],
+      [midX, allMinZ - 260]
     );
   }
 
   const nodes = [start];
   const seen = new Set();
   for (const pt of rawCandidates) {
-    if (pointInsideAny(pt[0], pt[1], activeObs, 0)) continue;
-    const key = `${Math.round(pt[0] / 120)}:${Math.round(pt[1] / 120)}`;
+    if (pointInsideAny(pt[0], pt[1], sortedObs, 0)) continue;
+    const key = `${Math.round(pt[0] / 85)}:${Math.round(pt[1] / 85)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     nodes.push(pt);
-    if (nodes.length >= 44) break;
+    if (nodes.length >= 160) break;
   }
   nodes.push(goal);
 
@@ -332,7 +436,7 @@ export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240
     visited[u] = 1;
     for (let v = 0; v < n; v++) {
       if (visited[v] || u === v) continue;
-      if (segmentBlocked(nodes[u], nodes[v], activeObs)) continue;
+      if (segmentBlocked(nodes[u], nodes[v], sortedObs)) continue;
       const alt = dist[u] + Math.hypot(nodes[v][0] - nodes[u][0], nodes[v][1] - nodes[u][1]);
       if (alt < dist[v]) {
         dist[v] = alt;
@@ -341,7 +445,7 @@ export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240
     }
   }
 
-  if (!Number.isFinite(dist[goalIdx])) return [goal];
+  if (!Number.isFinite(dist[goalIdx])) return null;
   const path = [];
   for (let cur = goalIdx; cur > 0; cur = prev[cur]) {
     path.push(nodes[cur]);
@@ -349,6 +453,93 @@ export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240
   }
   path.reverse();
   return path.length ? path : [goal];
+}
+
+export function planFloorPath(fromXZ, toXZ, staticBoxes = [], personRadius = 240) {
+  const rawStart = [fromXZ[0], fromXZ[1]];
+  const rawGoal = [toXZ[0], toXZ[1]];
+  if (Math.hypot(rawGoal[0] - rawStart[0], rawGoal[1] - rawStart[1]) < 5) return [rawGoal];
+
+  // Never discard obstacles containing start or goal. Instead, shrink only the padding of obstacles that enclose start/goal to a tight physical core so the door/panel leaf remains solid.
+  const fullObs = buildWalkObstacles(staticBoxes, personRadius);
+  const coreRadius = Math.min(85, Math.max(35, personRadius * 0.35));
+  const coreObs = buildWalkObstacles(staticBoxes, coreRadius);
+
+  const adaptiveObs = fullObs.map((r, idx) => {
+    const hitsStart = pointInsideAny(rawStart[0], rawStart[1], [r], 0);
+    const hitsGoal = pointInsideAny(rawGoal[0], rawGoal[1], [r], 0);
+    if (!hitsStart && !hitsGoal) return r;
+    const c = coreObs[idx];
+    if (!pointInsideAny(rawStart[0], rawStart[1], [c], 0) && !pointInsideAny(rawGoal[0], rawGoal[1], [c], 0)) {
+      return c;
+    }
+    // Even if start/goal was placed right on the panel edge, keep the physical unpadded panel solid if possible.
+    const raw = buildWalkObstacles([staticBoxes[idx]], 12)[0];
+    if (raw && !pointInsideAny(rawStart[0], rawStart[1], [raw], 0) && !pointInsideAny(rawGoal[0], rawGoal[1], [raw], 0)) {
+      return raw;
+    }
+    return null;
+  }).filter(Boolean);
+
+  const primary = solveShortestPath(rawStart, rawGoal, adaptiveObs);
+  if (primary) return primary;
+
+  // Retry with tighter body clearance so narrow gaps around open doors remain navigable without ever walking through doors.
+  const tightObs = coreObs.filter(r => !pointInsideAny(rawStart[0], rawStart[1], [r], 0) && !pointInsideAny(rawGoal[0], rawGoal[1], [r], 0));
+  const secondary = solveShortestPath(rawStart, rawGoal, tightObs);
+  if (secondary) return secondary;
+
+  // Final safety detour around the front perimeter of all obstacles.
+  if (tightObs.length) {
+    let maxZ = -Infinity, minX = Infinity, maxX = -Infinity;
+    for (const r of tightObs) {
+      if (r.maxZ > maxZ) maxZ = r.maxZ;
+      if (r.minX < minX) minX = r.minX;
+      if (r.maxX > maxX) maxX = r.maxX;
+    }
+    const safeZ = maxZ + 320;
+    return [
+      [clamp(rawStart[0], minX - 320, maxX + 320), safeZ],
+      [clamp(rawGoal[0], minX - 320, maxX + 320), safeZ],
+      rawGoal
+    ];
+  }
+  return [rawGoal];
+}
+
+export function resolveWalkStandPoint(pointXZ, staticBoxes = [], furnitureBounds = null, personRadius = 240) {
+  let sx = pointXZ[0];
+  let sz = pointXZ[1];
+  let cx = 0;
+  let cz = 0;
+  const hasBounds = furnitureBounds &&
+    Number.isFinite(furnitureBounds.min?.x) &&
+    Number.isFinite(furnitureBounds.max?.x) &&
+    Number.isFinite(furnitureBounds.min?.z) &&
+    Number.isFinite(furnitureBounds.max?.z);
+  if (hasBounds) {
+    cx = (furnitureBounds.min.x + furnitureBounds.max.x) * 0.5;
+    cz = (furnitureBounds.min.z + furnitureBounds.max.z) * 0.5;
+    sx = clamp(sx, furnitureBounds.min.x - 2200, furnitureBounds.max.x + 2200);
+    sz = clamp(sz, furnitureBounds.min.z - 2200, furnitureBounds.max.z + 2200);
+  }
+
+  const obs = buildWalkObstacles(staticBoxes, personRadius);
+  for (let pass = 0; pass < 4; pass++) {
+    const hit = obs.find(r => sx > r.minX + 1 && sx < r.maxX - 1 && sz > r.minZ + 1 && sz < r.maxZ - 1);
+    if (!hit) break;
+    const escapes = [
+      [hit.minX - 10, sz, Math.abs(sx - (hit.minX - 10))],
+      [hit.maxX + 10, sz, Math.abs(sx - (hit.maxX + 10))],
+      [sx, hit.minZ - 10, Math.abs(sz - (hit.minZ - 10))],
+      [sx, hit.maxZ + 10, Math.abs(sz - (hit.maxZ + 10))]
+    ].sort((a, b) => a[2] - b[2]);
+    sx = escapes[0][0];
+    sz = escapes[0][1];
+  }
+
+  const faceYaw = hasBounds ? Math.atan2(cx - sx, cz - sz) : 0;
+  return { standX: sx, standZ: sz, faceYaw };
 }
 
 export function pickNextPersonAction({ candidates = [], lastActionId = null, isSeated = false, rng = Math.random } = {}) {

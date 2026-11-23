@@ -12,7 +12,7 @@ try {
   const files = [
     'SKILL.md', 'PRD-Furniture-Visualizer.md',
     'examples/linea.json', 'examples/linea-brief.txt', 'examples/linea-elevations.pdf', 'examples/linea-finishes.png', 'examples/demo-logo.svg', 'examples/demo-brand.json',
-    'lib/spec.mjs', 'lib/schema.json', 'lib/coordinates.mjs', 'lib/kinematics.mjs', 'lib/geometry-qa.mjs', 'lib/mesh-fix.mjs', 'lib/brand.mjs', 'lib/materials-parse.mjs', 'lib/png-decode.mjs',
+    'lib/spec.mjs', 'lib/state.mjs', 'lib/schema.json', 'lib/coordinates.mjs', 'lib/kinematics.mjs', 'lib/geometry-qa.mjs', 'lib/mesh-fix.mjs', 'lib/brand.mjs', 'lib/materials-parse.mjs', 'lib/png-decode.mjs',
     'assets/check.cjs', 'assets/viewer.js', 'assets/studio.css', 'assets/THIRD-PARTY.txt',
     'tools/setup.mjs', 'tools/review.mjs', 'tools/fix-collisions.mjs', 'tools/materials.mjs', 'tools/extract.mjs', 'tools/prepare.mjs', 'tools/render-pdf.swift', 'tools/export.mjs'
   ];

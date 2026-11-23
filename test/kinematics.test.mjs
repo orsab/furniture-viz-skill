@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { createKinematics, stepPhysicsSubstep } from '../lib/kinematics.mjs';
+import { createKinematics, makePersonOBB, stepPhysicsSubstep } from '../lib/kinematics.mjs';
 
 function makeCabinetWithOpposingDoors() {
   // Door A hinges at X=-200, Z=200 (spans X[-200..-10], Z[182..200]), swings outward +Z (-75 deg).
@@ -256,4 +256,27 @@ test('Linea sideboard moves freely 0%<->100% across min, default, and max sizes 
     assert.equal(resDrawer.blocked, false, `Drawer falsely blocked at ${JSON.stringify(dims)}: ${JSON.stringify(resDrawer.blocker)}`);
     assert.equal(resDrawer.progress, 1);
   }
+});
+
+test('person 3D collision OBB stops opening door upon contact and clears outside swing arc', async () => {
+  const linea = JSON.parse(await readFile(new URL('../examples/linea.json', import.meta.url), 'utf8'));
+  const kin = createKinematics(linea);
+  kin.setDimensionsAndOptions({ width: 1400, height: 780, depth: 420 }, { pulls: 'Bar pulls', shelves: 'One shelf', base: 'Timber feet' });
+
+  // Stand directly inside Linea left door's outward swing arc (pivot x=-680, width ~669mm)
+  const inPathOBB = makePersonOBB({ x: -350, z: 520, yaw: Math.PI, height: 1700, build: 'regular', seated: false });
+  kin.setPersonObstacle(inPathOBB);
+  const blockedRes = kin.resolveJointMotion('door', 0, 1, { door: 0, drawer: 0 });
+  assert.equal(blockedRes.blocked, true);
+  assert.equal(blockedRes.blocker.partId, '__person__');
+  assert.equal(blockedRes.blocker.isPerson, true);
+  assert.equal(kin.isPersonClearOfJointSweep('door', 0, 1, { door: 0, drawer: 0 }, inPathOBB), false);
+
+  // Move safely outside the door swing arc
+  const clearOBB = makePersonOBB({ x: 350, z: 980, yaw: Math.PI, height: 1700, build: 'regular', seated: false });
+  kin.setPersonObstacle(clearOBB);
+  const clearRes = kin.resolveJointMotion('door', 0, 1, { door: 0, drawer: 0 });
+  assert.equal(clearRes.blocked, false);
+  assert.equal(clearRes.progress, 1);
+  assert.equal(kin.isPersonClearOfJointSweep('door', 0, 1, { door: 0, drawer: 0 }, clearOBB), true);
 });

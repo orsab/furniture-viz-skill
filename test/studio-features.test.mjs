@@ -9,6 +9,8 @@ import {
 } from '../app/presets.mjs';
 import { buildSpecSheetModel } from '../app/spec-sheet.mjs';
 import { createTranslator } from '../app/i18n.mjs';
+import { auditGeometry } from '../lib/geometry-qa.mjs';
+import { validateSpec } from '../lib/spec.mjs';
 import { initialState } from '../lib/state.mjs';
 
 test('STUDIO_PRESETS includes calibrated evening preset with strong internal lightBoost', () => {
@@ -76,4 +78,18 @@ test('buildSpecSheetModel produces structured Hebrew and English summaries acros
     backdropMode: 'studio'
   });
   assert.equal(unlitModel.ledKelvin, null);
+});
+
+test('primary-bedroom mirror light is recessed inside vanity alcove and passes QA cleanly', async () => {
+  const wardrobe = JSON.parse(await fs.readFile(new URL('../private/primary-bedroom-joinery-v2.json', import.meta.url), 'utf8'));
+  validateSpec(wardrobe, { forExport: true });
+  const qa = auditGeometry(wardrobe);
+  assert.equal(qa.warnings.length, 0);
+
+  const mirrorLight = wardrobe.switches.find(s => s.id === 'mirror-lights');
+  assert.ok(mirrorLight?.light);
+  const [lx, ly, lz] = mirrorLight.light.center;
+  assert.ok(lx > 485 && lx < 1035, `Expected mirror light X inside vanity width [485, 1035], got ${lx}`);
+  assert.ok(ly > 1220 && ly < 2730, `Expected mirror light Y inside mirror height, got ${ly}`);
+  assert.ok(lz > -386 && lz < -307, `Expected mirror light Z inside vanity alcove [-386, -307], got ${lz}`);
 });

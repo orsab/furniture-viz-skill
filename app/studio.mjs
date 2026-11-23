@@ -8,12 +8,16 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { resolveVec } from '../lib/coordinates.mjs';
-import { createKinematics, stepPhysicsSubstep } from '../lib/kinematics.mjs';
+import { createKinematics, makePersonOBB, stepPhysicsSubstep } from '../lib/kinematics.mjs';
 import { STUDIO_PRESETS, LED_TEMPS, ROOM_WALL_PRESETS, ROOM_FLOOR_PRESETS } from './presets.mjs';
 import {
   DEFAULT_ACTION_DELAY_MS,
+  AUTO_CLOSE_HOLD_SEC,
+  JOINT_AUTO_CLOSE_SEC,
   detectSeats,
   computeInteractionTarget,
+  clampPersonOutsideObstacles,
+  resolveWalkStandPoint,
   planFloorPath,
   pickNextPersonAction
 } from './person-ai.mjs';
@@ -839,7 +843,18 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     let light = null;
     if (def.light) {
       light = new T.PointLight(def.light.color, 0, def.light.distance, 1.5);
+      light.castShadow = false;
+      light.shadow.mapSize.set(512, 512);
+      light.shadow.camera.near = 8;
+      light.shadow.camera.far = Math.max(200, def.light.distance);
+      light.shadow.bias = -0.0006;
+      light.shadow.normalBias = 2.0;
+      light.shadow.radius = 2.5;
       (joint ? joint.group : furnitureRoot).add(light);
+      for (const ep of emissiveParts) {
+        ep.noShadowCast = true;
+        ep.visual.traverse(obj => { if (obj.isMesh) obj.castShadow = false; });
+      }
     }
     return [def.id, {
       def, joint, light, actuatorParts, emissiveParts,
@@ -941,6 +956,16 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     if (sw.light) {
       sw.light.color.set(kelvinPreset.color);
       sw.light.intensity = anyVisible ? sw.def.light.intensity * Math.pow(200, 1.5) * boost * p : 0;
+      const shouldCast = Boolean(anyVisible && p > 0.005);
+      let activeCasters = 0;
+      for (const other of switches.values()) {
+        if (other !== sw && other.light?.castShadow) activeCasters++;
+      }
+      const nextCast = shouldCast && (sw.light.castShadow || activeCasters < 4);
+      if (sw.light.castShadow !== nextCast) {
+        sw.light.castShadow = nextCast;
+        renderer.shadowMap.needsUpdate = true;
+      }
     }
     const glowColor = sw.def.light ? new T.Color(kelvinPreset.emissive) : null;
     const emissiveMult = 3.2 * (1 + (boost - 1) * 0.45);
@@ -1014,7 +1039,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
             const edges = new T.EdgesGeometry(obj.geometry, 28);
             const lines = new T.LineSegments(edges, xrayWireMat);
             lines.userData.isXrayWire = true;
-            lines.raycast = () => {};
+            lines.raycast = () => { };
             obj.add(lines);
           }
         } else {
@@ -1022,7 +1047,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           m.opacity = orig.opacity;
           m.depthWrite = orig.depthWrite;
           m.needsUpdate = true;
-          obj.castShadow = orig.castShadow;
+          obj.castShadow = part.noShadowCast ? false : orig.castShadow;
           obj.receiveShadow = orig.receiveShadow;
           delete m.userData.xrayApplied;
           delete m.userData.xrayOrig;
@@ -1225,6 +1250,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
 
   const personActor = {
     running: false,
+    directed: false,
+    queue: [],
     hasMoved: false,
     phase: 'stopped',
     waitTimer: 0,
@@ -1239,11 +1266,14 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     sitBlend: 0,
     seatHeightNorm: 0,
     reachBlend: 0,
+    reachProgress: 0,
     reachSide: 1,
     reachHeightNorm: 0.55,
     headYaw: 0,
     headPitch: 0,
     idleTime: 0,
+    turn: null,
+    inspect: null,
     seatedSeat: null,
     posX: 0,
     posZ: 0,
@@ -1276,12 +1306,52 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     return boxes;
   }
 
+  function updateKinematicsPersonObstacle() {
+    if (!person.root.visible || !personGeometry) {
+      kinematics.setPersonObstacle(null);
+      return;
+    }
+    kinematics.setPersonObstacle(makePersonOBB({
+      x: person.root.position.x,
+      z: person.root.position.z,
+      yaw: person.root.rotation.y,
+      height: personGeometry.height,
+      build: personGeometry.build,
+      seated: personActor.sitBlend > 0.5 || personGeometry.pose === 'seated'
+    }));
+  }
+
+  function makeStandClearChecker(jointId, fromP, toP) {
+    const posMap = liveJointPositions();
+    const h = personGeometry?.height || 1700;
+    const b = personGeometry?.build || 'regular';
+    return (sx, sz, yaw) => kinematics.isPersonClearOfJointSweep(
+      jointId,
+      fromP,
+      toP,
+      posMap,
+      makePersonOBB({ x: sx, z: sz, yaw, height: h, build: b, seated: false })
+    );
+  }
+
+  const jointAutoCloseTimers = new Map();
+
+  function armJointAutoClose(jointId, delaySec = JOINT_AUTO_CLOSE_SEC) {
+    if (!jointId) return;
+    jointAutoCloseTimers.set(jointId, delaySec);
+  }
+
+  function clearJointAutoClose(jointId) {
+    if (!jointId) return;
+    jointAutoCloseTimers.delete(jointId);
+  }
+
   function buildPersonCandidates() {
     const allBoxes = collectWorldPartBoxes();
     const staticBoxes = allBoxes.filter(b => !b.jointId);
+    const movingBoxes = allBoxes.filter(b => b.jointId);
     const byJoint = new Map();
-    for (const b of allBoxes) {
-      if (!b.jointId) continue;
+    for (const b of movingBoxes) {
       const arr = byJoint.get(b.jointId) || [];
       arr.push(b);
       byJoint.set(b.jointId, arr);
@@ -1294,8 +1364,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       const tBoxes = byJoint.get(j.id);
       if (!tBoxes?.length) continue;
       const goal = j.current > 0.45 ? 0 : 1;
-      const res = kinematics.resolveJointMotion(j.id, j.current, goal, posMap);
+      const res = kinematics.resolveJointMotion(j.id, j.current, goal, posMap, { ignorePerson: true });
       if (Math.abs(res.progress - j.current) <= 0.12) continue;
+      if (goal > j.current && res.blocked && Math.abs(res.progress - j.current) < 0.5) continue;
+      if (goal < j.current && res.blocked && res.progress > 0.15) continue;
       const target = computeInteractionTarget({
         kind: 'joint',
         id: j.id,
@@ -1303,7 +1375,9 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         def: j.def,
         targetBoxes: tBoxes,
         staticBoxes,
-        pivot: j.pivot
+        movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
+        pivot: j.pivot,
+        isStandClear: makeStandClearChecker(j.id, j.current, res.progress)
       });
       if (target) candidates.push({ ...target, goal, isOpening: goal > 0.5 });
     }
@@ -1320,7 +1394,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         label: sw.def.label,
         def: null,
         targetBoxes: tBoxes,
-        staticBoxes
+        staticBoxes,
+        movingObstacles: movingBoxes
       });
       if (target) candidates.push({ ...target, goal, isOpening: goal > 0.5 });
     }
@@ -1383,7 +1458,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       }
     }
 
-    return { candidates, staticBoxes };
+    return { candidates, staticBoxes, allBoxes };
   }
 
   function currentMotionPayload() {
@@ -1393,11 +1468,14 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       sitBlend: personActor.sitBlend,
       seatHeightNorm: personActor.seatHeightNorm,
       reachBlend: personActor.reachBlend,
+      reachProgress: personActor.reachProgress,
       reachSide: personActor.reachSide,
       reachHeightNorm: personActor.reachHeightNorm,
       headYaw: personActor.headYaw,
       headPitch: personActor.headPitch,
-      idleTime: personActor.idleTime
+      idleTime: personActor.idleTime,
+      turn: personActor.turn,
+      inspect: personActor.inspect
     };
   }
 
@@ -1416,20 +1494,26 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     if (!personBounds.isEmpty()) shadowBounds.union(personBounds);
     lighting.updateShadowBounds(shadowBounds, liveFurnitureBounds, parts, person.root.visible, personBounds);
     updateAoClipBox();
+    updateKinematicsPersonObstacle();
   }
 
   function stepPersonActor(dt) {
+    const activeDriver = personActor.running || personActor.directed;
     const needsSettle = personActor.walkBlend > 0.002 || personActor.reachBlend > 0.002;
-    if (!personActor.running && !needsSettle) return false;
+    if (!activeDriver && !needsSettle) return false;
     if (!person.root.visible) {
-      if (personActor.running) setPersonAutoRun(false);
+      if (activeDriver) {
+        personActor.directed = false;
+        personActor.queue = [];
+        setPersonAutoRun(false);
+      }
       return false;
     }
 
     personActor.idleTime += dt;
     const h = Math.max(900, personGeometry?.height || 1700);
 
-    if (!personActor.running) {
+    if (!activeDriver) {
       personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 6);
       personActor.reachBlend = Math.max(0, personActor.reachBlend - dt * 6);
       personActor.headYaw *= Math.max(0, 1 - dt * 6);
@@ -1440,24 +1524,87 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     }
 
     const enterWaiting = () => {
-      personActor.phase = 'idle_wait';
       personActor.currentAction = null;
-      personActor.waitTimer = DEFAULT_ACTION_DELAY_MS / 1000;
       personActor.phaseTime = 0;
-      callbacks.onPersonAutoAction?.({
-        phase: 'waiting',
-        nextDelaySec: Math.round(DEFAULT_ACTION_DELAY_MS / 1000)
-      });
+      personActor.turn = null;
+      personActor.inspect = null;
+      if (personActor.queue.length > 0) {
+        personActor.phase = 'queue_wait';
+        personActor.waitTimer = personActor.queue[0]?.holdBeforeSec ?? 0.35;
+      } else if (personActor.directed && !personActor.running) {
+        personActor.directed = false;
+        personActor.phase = 'stopped';
+        callbacks.onPersonAutoAction?.({ phase: 'directed_done' });
+      } else {
+        personActor.phase = 'idle_wait';
+        personActor.waitTimer = DEFAULT_ACTION_DELAY_MS / 1000;
+        callbacks.onPersonAutoAction?.({
+          phase: 'waiting',
+          nextDelaySec: Math.round(DEFAULT_ACTION_DELAY_MS / 1000)
+        });
+      }
     };
 
-    if (personActor.phase === 'idle_wait') {
+    const startActionStep = (next, staticBoxes, allBoxes = []) => {
+      personActor.currentAction = next;
+      personActor.actionFired = false;
+      personActor.lastActionId = next.id;
+      personActor.phaseTime = 0;
+      personActor.turn = null;
+      personActor.inspect = null;
+      if (personActor.seatedSeat) {
+        personActor.phase = 'standing_up';
+      } else if (next.kind === 'stand') {
+        enterWaiting();
+      } else {
+        const walkObs = allBoxes.length ? allBoxes : staticBoxes;
+        personActor.path = planFloorPath([personActor.posX, personActor.posZ], [next.standX, next.standZ], walkObs);
+        personActor.pathIdx = 0;
+        const d0 = Math.hypot(next.standX - personActor.posX, next.standZ - personActor.posZ);
+        personActor.phase = d0 < 24 ? 'turning' : 'walking';
+      }
+    };
+
+    if (personActor.phase === 'queue_wait') {
       personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 5);
       personActor.reachBlend = Math.max(0, personActor.reachBlend - dt * 5);
-      personActor.headYaw = Math.sin(personActor.idleTime * 0.7) * 0.14;
-      personActor.headPitch = Math.sin(personActor.idleTime * 0.45) * 0.05;
       personActor.waitTimer -= dt;
       if (personActor.waitTimer <= 0) {
-        const { candidates, staticBoxes } = buildPersonCandidates();
+        const next = personActor.queue.shift();
+        if (!next) {
+          enterWaiting();
+        } else {
+          const allBoxes = collectWorldPartBoxes();
+          const staticBoxes = allBoxes.filter(b => !b.jointId);
+          const movingBoxes = allBoxes.filter(b => b.jointId);
+          // Recompute stand target against live door geometry when closing or opening a queued joint.
+          if (next.kind === 'joint') {
+            const j = joints.get(next.id);
+            const tBoxes = movingBoxes.filter(b => b.jointId === next.id);
+            if (j && tBoxes.length) {
+              const refreshed = computeInteractionTarget({
+                kind: 'joint',
+                id: j.id,
+                label: j.label,
+                def: j.def,
+                targetBoxes: tBoxes,
+                staticBoxes,
+                movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
+                pivot: j.pivot,
+                isStandClear: makeStandClearChecker(j.id, j.current, next.goal)
+              });
+              if (refreshed) Object.assign(next, refreshed);
+            }
+          }
+          startActionStep(next, staticBoxes, allBoxes);
+        }
+      }
+    } else if (personActor.phase === 'idle_wait') {
+      personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 5);
+      personActor.reachBlend = Math.max(0, personActor.reachBlend - dt * 5);
+      personActor.waitTimer -= dt;
+      if (personActor.waitTimer <= 0) {
+        const { candidates, staticBoxes, allBoxes } = buildPersonCandidates();
         const next = pickNextPersonAction({
           candidates,
           lastActionId: personActor.lastActionId,
@@ -1466,20 +1613,15 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         if (!next) {
           personActor.waitTimer = DEFAULT_ACTION_DELAY_MS / 1000;
         } else {
-          personActor.currentAction = next;
-          personActor.actionFired = false;
-          personActor.lastActionId = next.id;
-          personActor.phaseTime = 0;
-          if (personActor.seatedSeat) {
-            personActor.phase = 'standing_up';
-          } else if (next.kind === 'stand') {
-            enterWaiting();
-          } else {
-            personActor.path = planFloorPath([personActor.posX, personActor.posZ], [next.standX, next.standZ], staticBoxes);
-            personActor.pathIdx = 0;
-            const d0 = Math.hypot(next.standX - personActor.posX, next.standZ - personActor.posZ);
-            personActor.phase = d0 < 24 ? 'turning' : 'walking';
+          if (next.kind === 'joint' && next.goal > 0.5) {
+            personActor.queue.push({
+              ...next,
+              goal: 0,
+              isOpening: false,
+              holdBeforeSec: AUTO_CLOSE_HOLD_SEC
+            });
           }
+          startActionStep(next, staticBoxes, allBoxes);
         }
       }
     } else if (personActor.phase === 'standing_up') {
@@ -1508,11 +1650,12 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           if (personActor.currentAction?.kind === 'stand') {
             enterWaiting();
           } else {
-            const { staticBoxes } = buildPersonCandidates();
+            const { staticBoxes, allBoxes } = buildPersonCandidates();
+            const walkObs = allBoxes.length ? allBoxes : staticBoxes;
             personActor.path = planFloorPath(
               [personActor.posX, personActor.posZ],
               [personActor.currentAction.standX, personActor.currentAction.standZ],
-              staticBoxes
+              walkObs
             );
             personActor.pathIdx = 0;
             personActor.phase = 'walking';
@@ -1536,14 +1679,32 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
             personActor.phaseTime = 0;
           }
         } else {
-          const step = Math.min(dist, 760 * dt);
-          personActor.posX += (dx / dist) * step;
-          personActor.posZ += (dz / dist) * step;
+          const lastWaypoint = personActor.pathIdx === personActor.path.length - 1;
+          const speed = Math.min(h * .70, Math.max(180, 180 + personActor.walkBlend * h * .62),
+            lastWaypoint ? 200 + dist * 3.8 : Infinity);
+          const step = Math.min(dist, speed * dt);
+          const nextX = personActor.posX + (dx / dist) * step;
+          const nextZ = personActor.posZ + (dz / dist) * step;
+          const liveBoxes = collectWorldPartBoxes();
+          const clamped = clampPersonOutsideObstacles(nextX, nextZ, liveBoxes, 165);
+          personActor.posX = clamped.x;
+          personActor.posZ = clamped.z;
           personActor.hasMoved = true;
+          if (Math.hypot(clamped.x - nextX, clamped.z - nextZ) > 2 && personActor.currentAction) {
+            const replanned = planFloorPath(
+              [personActor.posX, personActor.posZ],
+              [personActor.currentAction.standX, personActor.currentAction.standZ],
+              liveBoxes
+            );
+            if (replanned?.length) {
+              personActor.path = replanned;
+              personActor.pathIdx = 0;
+            }
+          }
           const heading = Math.atan2(dx, dz);
           personActor.yaw = lerpAngle(personActor.yaw, heading, Math.min(1, dt * 8));
-          personActor.walkPhase += (step / (h * 0.34)) * Math.PI;
-          personActor.walkBlend = Math.min(1, personActor.walkBlend + dt * 5);
+          personActor.walkPhase = (personActor.walkPhase + step / (h * person.walkTravel) * Math.PI * 2) % (Math.PI * 2);
+          personActor.walkBlend = Math.min(1, personActor.walkBlend + dt * 4);
           if (personActor.currentAction) {
             const aimYaw = Math.atan2(personActor.currentAction.tx - personActor.posX, personActor.currentAction.tz - personActor.posZ);
             personActor.headYaw = clamp(wrapAngle(aimYaw - personActor.yaw), -0.55, 0.55);
@@ -1557,12 +1718,19 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (!act) {
         enterWaiting();
       } else {
-        personActor.yaw = lerpAngle(personActor.yaw, act.faceYaw, Math.min(1, dt * 7));
-        personActor.headYaw = clamp(wrapAngle(act.faceYaw - personActor.yaw), -0.6, 0.6);
+        const turn = personActor.turn ??= {
+          start: personActor.yaw, angle: wrapAngle(act.faceYaw - personActor.yaw), progress: 0
+        };
+        const duration = Math.min(1.6, .32 + Math.abs(turn.angle) * .48);
+        personActor.phaseTime += dt;
+        turn.progress = Math.min(1, personActor.phaseTime / duration);
+        personActor.yaw = turn.start + turn.angle * person.turnProgress(turn.angle, turn.progress);
+        personActor.headYaw *= Math.exp(-dt * 8);
         personActor.headPitch = clamp((act.ty - h * 0.85) / 1400, -0.35, 0.3);
-        if (Math.abs(wrapAngle(act.faceYaw - personActor.yaw)) < 0.04) {
+        if (turn.progress === 1) {
           personActor.yaw = act.faceYaw;
           personActor.headYaw = 0;
+          personActor.turn = null;
           personActor.phase = 'acting';
           personActor.phaseTime = 0;
           personActor.actionFired = false;
@@ -1601,11 +1769,19 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           }
           if (personActor.phaseTime >= dur) enterWaiting();
         } else if (act.kind === 'joint' || act.kind === 'switch') {
-          const dur = 1.0;
-          const u = clamp(personActor.phaseTime / dur, 0, 1);
-          personActor.reachBlend = Math.sin(u * Math.PI);
-          if (personActor.phaseTime >= 0.45 && !personActor.actionFired) {
+          const dur = 1.5;
+          personActor.reachProgress = clamp(personActor.phaseTime / dur, 0, 1);
+          personActor.reachBlend = 1;
+          if (personActor.reachProgress >= .34 && !personActor.actionFired) {
             personActor.actionFired = true;
+            if (act.kind === 'joint') {
+              const targetJoint = joints.get(act.id);
+              if (targetJoint) {
+                targetJoint.target = act.goal;
+                if (act.goal > 0.45) armJointAutoClose(act.id);
+                else clearJointAutoClose(act.id);
+              }
+            }
             callbacks.onPersonAutoAction?.({
               phase: 'action',
               actionType: act.kind,
@@ -1619,9 +1795,20 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
             personActor.reachBlend = 0;
             enterWaiting();
           }
+        } else if (act.kind === 'walk') {
+          if (!personActor.actionFired) {
+            personActor.actionFired = true;
+            callbacks.onPersonAutoAction?.({
+              phase: 'action',
+              actionType: 'walk',
+              id: act.id,
+              label: act.label
+            });
+          }
+          if (personActor.phaseTime >= 0.35) enterWaiting();
         } else {
-          const dur = 1.3;
-          personActor.headYaw = Math.sin((personActor.phaseTime / dur) * Math.PI * 2) * 0.28;
+          const dur = 1.8;
+          personActor.inspect = clamp(personActor.phaseTime / dur, 0, 1);
           if (personActor.phaseTime >= 0.35 && !personActor.actionFired) {
             personActor.actionFired = true;
             callbacks.onPersonAutoAction?.({
@@ -1631,10 +1818,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
               label: act.label
             });
           }
-          if (personActor.phaseTime >= dur) {
-            personActor.headYaw = 0;
-            enterWaiting();
-          }
+          if (personActor.phaseTime >= dur) enterWaiting();
         }
       }
     }
@@ -1646,7 +1830,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     return true;
   }
 
-  function setPersonAutoRun(run) {
+  function setPersonAutoRun(run, { waitFirst = false } = {}) {
     const next = Boolean(run);
     if (next) {
       personActor.posX = person.root.position.x;
@@ -1661,24 +1845,40 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       }
       personActor.running = true;
       personActor.phase = 'idle_wait';
-      personActor.waitTimer = 0.25;
+      personActor.waitTimer = waitFirst ? DEFAULT_ACTION_DELAY_MS / 1000 : 0.25;
       personActor.phaseTime = 0;
       personActor.currentAction = null;
+      if (waitFirst) callbacks.onPersonAutoAction?.({ phase: 'waiting', nextDelaySec: personActor.waitTimer });
       schedule();
     } else {
       personActor.running = false;
+      personActor.directed = false;
+      personActor.queue = [];
       personActor.phase = 'stopped';
       personActor.currentAction = null;
+      personActor.turn = null;
+      personActor.inspect = null;
       callbacks.onPersonAutoAction?.({ phase: 'stopped' });
       schedule();
     }
   }
 
-  function resetPersonPosition() {
+  function resetPersonPosition(start = null) {
     personActor.running = false;
-    personActor.hasMoved = false;
+    personActor.directed = false;
+    personActor.queue = [];
+    personActor.hasMoved = Boolean(start);
+    if (start) {
+      personActor.posX = start.x;
+      personActor.posZ = start.z;
+      personActor.yaw = rad(start.yaw);
+      personActor.idleTime = 0;
+      personActor.walkPhase = 0;
+    }
     personActor.phase = 'stopped';
     personActor.currentAction = null;
+    personActor.turn = null;
+    personActor.inspect = null;
     personActor.seatedSeat = null;
     personActor.walkBlend = 0;
     personActor.reachBlend = 0;
@@ -1689,11 +1889,242 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     schedule();
   }
 
+  function commandPerson(cmd) {
+    if (!cmd || !ready) return false;
+    if (!personActor.hasMoved && !personActor.running && !personActor.directed) {
+      personActor.posX = person.root.position.x;
+      personActor.posZ = person.root.position.z;
+      personActor.yaw = person.root.rotation.y;
+    }
+    if (personGeometry?.pose === 'seated' && personActor.sitBlend < 0.5) {
+      personActor.sitBlend = 1;
+    }
+
+    const allBoxes = collectWorldPartBoxes();
+    const staticBoxes = allBoxes.filter(b => !b.jointId);
+    const movingBoxes = allBoxes.filter(b => b.jointId);
+    const byJoint = new Map();
+    for (const b of movingBoxes) {
+      const arr = byJoint.get(b.jointId) || [];
+      arr.push(b);
+      byJoint.set(b.jointId, arr);
+    }
+    const byPartId = new Map(allBoxes.map(b => [b.id, b]));
+    const steps = [];
+
+    if (cmd.kind === 'joint') {
+      const j = joints.get(cmd.id);
+      const tBoxes = j ? byJoint.get(j.id) : null;
+      if (!j || !tBoxes?.length) return false;
+      const goal = cmd.goal !== undefined ? cmd.goal : (j.current > 0.45 ? 0 : 1);
+      const posMap = liveJointPositions();
+      const res = kinematics.resolveJointMotion(j.id, j.current, goal, posMap, { ignorePerson: true });
+      const needsUnblock = res.blocked && res.blocker?.jointId && res.blocker.jointId !== j.id && Math.abs(res.progress - j.current) < 0.55;
+      const blockerJ = needsUnblock ? joints.get(res.blocker.jointId) : null;
+      const blockerBoxes = blockerJ ? byJoint.get(blockerJ.id) : null;
+
+      if (blockerJ && blockerBoxes?.length) {
+        const blockerGoal = blockerJ.current > 0.45 ? 0 : 1;
+        const bRes = kinematics.resolveJointMotion(blockerJ.id, blockerJ.current, blockerGoal, posMap, { ignorePerson: true });
+        if (Math.abs(bRes.progress - blockerJ.current) > 0.12) {
+          const blockerTarget = computeInteractionTarget({
+            kind: 'joint',
+            id: blockerJ.id,
+            label: blockerJ.label,
+            def: blockerJ.def,
+            targetBoxes: blockerBoxes,
+            staticBoxes,
+            movingObstacles: movingBoxes.filter(b => b.jointId !== blockerJ.id),
+            pivot: blockerJ.pivot,
+            isStandClear: makeStandClearChecker(blockerJ.id, blockerJ.current, bRes.progress)
+          });
+          if (blockerTarget) steps.push({ ...blockerTarget, goal: blockerGoal, isOpening: blockerGoal > 0.5 });
+        }
+      }
+
+      const mainTarget = computeInteractionTarget({
+        kind: 'joint',
+        id: j.id,
+        label: j.label,
+        def: j.def,
+        targetBoxes: tBoxes,
+        staticBoxes,
+        movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
+        pivot: j.pivot,
+        isStandClear: makeStandClearChecker(j.id, j.current, needsUnblock ? goal : res.progress)
+      });
+      if (!mainTarget) return false;
+      steps.push({ ...mainTarget, goal, isOpening: goal > 0.5 });
+
+      if (cmd.autoClose !== false && goal > 0.5) {
+        steps.push({
+          ...mainTarget,
+          goal: 0,
+          isOpening: false,
+          holdBeforeSec: AUTO_CLOSE_HOLD_SEC
+        });
+        if (steps[0]?.id && steps[0].id !== j.id && steps[0].goal > 0.5) {
+          steps.push({
+            ...steps[0],
+            goal: 0,
+            isOpening: false,
+            holdBeforeSec: 0.45
+          });
+        }
+      }
+    } else if (cmd.kind === 'switch') {
+      const sw = switches.get(cmd.id);
+      if (!sw) return false;
+      const tBoxes = [...sw.actuatorParts, ...sw.emissiveParts].map(p => byPartId.get(p.def.id)).filter(Boolean);
+      if (!tBoxes.length) return false;
+      const goal = cmd.goal !== undefined ? cmd.goal : (sw.target >= 0.5 ? 0 : 1);
+      const target = computeInteractionTarget({
+        kind: 'switch',
+        id: sw.def.id,
+        label: sw.def.label,
+        def: null,
+        targetBoxes: tBoxes,
+        staticBoxes,
+        movingObstacles: movingBoxes
+      });
+      if (!target) return false;
+      steps.push({ ...target, goal, isOpening: goal > 0.5 });
+    } else if (cmd.kind === 'sit') {
+      const seats = detectSeats(spec, staticBoxes);
+      const seat = (cmd.seatId ? seats.find(s => s.id === cmd.seatId) : null) || seats[0];
+      if (!seat) return false;
+      steps.push({
+        kind: 'sit',
+        id: `sit:${seat.id}`,
+        label: seat.label,
+        seat,
+        standX: seat.approachX,
+        standZ: seat.approachZ,
+        faceYaw: seat.faceYaw,
+        tx: seat.seatX,
+        ty: seat.seatY,
+        tz: seat.seatZ,
+        reachY: seat.seatY
+      });
+    } else if (cmd.kind === 'stand') {
+      if (!personActor.seatedSeat) return false;
+      steps.push({
+        kind: 'stand',
+        id: `stand:${personActor.seatedSeat.id}`,
+        label: personActor.seatedSeat.label,
+        seat: personActor.seatedSeat,
+        standX: personActor.seatedSeat.approachX,
+        standZ: personActor.seatedSeat.approachZ,
+        faceYaw: personActor.seatedSeat.faceYaw,
+        tx: personActor.seatedSeat.seatX,
+        ty: personActor.seatedSeat.seatY,
+        tz: personActor.seatedSeat.seatZ,
+        reachY: personActor.seatedSeat.seatY
+      });
+    } else if (cmd.kind === 'walk') {
+      if (cmd.partId) {
+        const box = byPartId.get(cmd.partId);
+        if (!box) return false;
+        const target = computeInteractionTarget({
+          kind: 'part',
+          id: cmd.partId,
+          label: cmd.label || spec.name,
+          def: null,
+          targetBoxes: [box],
+          staticBoxes,
+          movingObstacles: movingBoxes
+        });
+        if (!target) return false;
+        steps.push({ ...target, kind: cmd.inspect ? 'inspect' : 'walk' });
+      } else if (Array.isArray(cmd.targetPoint)) {
+        const pt = resolveWalkStandPoint(cmd.targetPoint, allBoxes, staticFurnitureBounds);
+        const fx = staticFurnitureBounds.isEmpty() ? pt.standX : (staticFurnitureBounds.min.x + staticFurnitureBounds.max.x) * 0.5;
+        const fy = staticFurnitureBounds.isEmpty() ? 900 : (staticFurnitureBounds.min.y + staticFurnitureBounds.max.y) * 0.5;
+        const fz = staticFurnitureBounds.isEmpty() ? pt.standZ + 500 : (staticFurnitureBounds.min.z + staticFurnitureBounds.max.z) * 0.5;
+        steps.push({
+          kind: cmd.inspect ? 'inspect' : 'walk',
+          id: `walk:${Math.round(pt.standX)}:${Math.round(pt.standZ)}`,
+          label: cmd.label || spec.name,
+          tx: fx,
+          ty: fy,
+          tz: fz,
+          standX: pt.standX,
+          standZ: pt.standZ,
+          faceYaw: pt.faceYaw,
+          reachY: fy
+        });
+      }
+    }
+
+    if (!steps.length) return false;
+    const first = steps.shift();
+    personActor.queue = steps;
+    personActor.directed = true;
+    personActor.currentAction = first;
+    personActor.actionFired = false;
+    personActor.phaseTime = 0;
+    personActor.turn = null;
+    personActor.inspect = null;
+    if (personActor.seatedSeat) {
+      personActor.phase = 'standing_up';
+    } else if (first.kind === 'stand') {
+      personActor.phase = 'stopped';
+      personActor.directed = false;
+    } else {
+      personActor.path = planFloorPath([personActor.posX, personActor.posZ], [first.standX, first.standZ], allBoxes);
+      personActor.pathIdx = 0;
+      const d0 = Math.hypot(first.standX - personActor.posX, first.standZ - personActor.posZ);
+      personActor.phase = d0 < 24 ? 'turning' : 'walking';
+    }
+    schedule();
+    return true;
+  }
+
   function stepAnimations(now, dt) {
     let active = false;
     let cornersNeedUpdate = false;
 
     if (stepPersonActor(dt)) active = true;
+
+    if (jointAutoCloseTimers.size > 0) {
+      const posMap = liveJointPositions();
+      const synced = {};
+      for (const [jId, rem] of [...jointAutoCloseTimers.entries()]) {
+        const j = joints.get(jId);
+        if (!j || (j.target <= 0.05 && j.current <= 0.05)) {
+          jointAutoCloseTimers.delete(jId);
+          continue;
+        }
+        const personBusyWithJoint =
+          personActor.currentAction?.id === jId ||
+          personActor.queue.some(q => q.id === jId);
+        if (personBusyWithJoint) {
+          active = true;
+          continue;
+        }
+        const nextRem = rem - dt;
+        if (nextRem > 0) {
+          jointAutoCloseTimers.set(jId, nextRem);
+          active = true;
+        } else {
+          const res = kinematics.resolveJointMotion(jId, j.current, 0, posMap);
+          if (res.blocked && res.progress > 0.08) {
+            // Wait for internal drawer or person in doorway to clear, then retry.
+            jointAutoCloseTimers.set(jId, 1.5);
+            active = true;
+          } else {
+            j.target = 0;
+            posMap[jId] = 0;
+            jointAutoCloseTimers.delete(jId);
+            synced[jId] = 0;
+            active = true;
+          }
+        }
+      }
+      if (Object.keys(synced).length > 0) {
+        callbacks.onJointSync?.(synced);
+      }
+    }
 
     const phys = stepPhysicsSubstep(kinematics, joints, dt);
     if (phys.moved) {
@@ -1901,7 +2332,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
 
     personBounds.makeEmpty();
     if (p.visible) {
-      if (!personActor.running && !personActor.hasMoved) {
+      if (!personActor.running && !personActor.directed && !personActor.hasMoved) {
         person.root.position.set(0, 0, 0);
         personBounds.setFromObject(person.root);
         const gap = p.height * 0.09;
@@ -1924,6 +2355,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         i & 4 ? personBounds.max.z : personBounds.min.z
       );
     }
+    updateKinematicsPersonObstacle();
 
     const prevBase = baseDist;
     const prevDist = activeCam.position.distanceTo(orbit.target) || prevBase;
@@ -1959,7 +2391,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     projectionDirty = true;
   }
 
-  function update(state, { animate = false } = {}) {
+  function update(state, { animate = false, restoreJoints = false } = {}) {
     const now = performance.now();
     const d = state.dimensions, resized = !dims || dims.width !== d.width || dims.height !== d.height || dims.depth !== d.depth;
     let layout = resized || showGuides !== state.showDimensions;
@@ -2013,7 +2445,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (resized && p.joint) positionPart(p.anchor, p.closedCenter, p.joint);
     }
 
-    if ((resized || optionChanged) && ready) {
+    if (!restoreJoints && (resized || optionChanged) && ready) {
       const adjusted = kinematics.resolveAllOverlaps(liveJointPositions());
       const adjKeys = Object.keys(adjusted);
       if (adjKeys.length) {
@@ -2029,10 +2461,11 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     }
 
     const posMap = liveJointPositions();
+    if (restoreJoints) jointAutoCloseTimers.clear();
     for (const j of joints.values()) {
       const requested = state.joints[j.id];
-      if (!j.initialized || !animate || reducedMotion) {
-        if (!j.initialized) {
+      if (!j.initialized || restoreJoints || !animate || reducedMotion) {
+        if (!j.initialized || restoreJoints) {
           j.current = j.target = requested;
           j.velocity = 0;
           j.initialized = true;
@@ -2061,6 +2494,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         }
       } else {
         j.target = requested;
+        if (requested > 0.45) armJointAutoClose(j.id);
+        else clearJointAutoClose(j.id);
       }
     }
 
@@ -2068,6 +2503,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       const target = state.switches?.[sw.def.id] ? 1 : 0;
       if (resized && sw.light) {
         positionPart(sw.light, resolveVec(sw.def.light.center, d), sw.joint);
+        renderer.shadowMap.needsUpdate = true;
       }
       if (!sw.initialized || !animate || reducedMotion) {
         sw.current = sw.target = sw.from = target;
@@ -2087,25 +2523,26 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (wasVisible !== plate.mesh.visible) layout = true;
     }
 
+    const actorActive = personActor.running || personActor.directed;
     const personState = state.person, prior = personGeometry;
-    if (prior && prior.side !== personState.side && !personActor.running) {
+    if (prior && prior.side !== personState.side && !actorActive) {
       personActor.hasMoved = false;
     }
-    if (prior && prior.pose !== personState.pose && !personActor.running) {
+    if (prior && prior.pose !== personState.pose && !actorActive) {
       personActor.sitBlend = personState.pose === 'seated' ? 1 : 0;
       personActor.seatHeightNorm = 0;
       personActor.seatedSeat = null;
     }
-    const poseOrYawChanged = !personActor.running && (prior?.pose !== personState.pose || prior?.yaw !== personState.yaw);
+    const poseOrYawChanged = !actorActive && (prior?.pose !== personState.pose || prior?.yaw !== personState.yaw);
     if (!prior || prior.visible !== personState.visible || (personState.visible &&
       (prior.height !== personState.height || prior.build !== personState.build || prior.side !== personState.side || poseOrYawChanged))) {
       personGeometry = { ...personState };
       layout = true;
-    } else if (personActor.running) {
+    } else if (actorActive) {
       personGeometry = { ...personState };
     }
     person.update(personState);
-    if (personActor.running || personActor.hasMoved) {
+    if (actorActive || personActor.hasMoved) {
       person.root.position.set(personActor.posX, 0, personActor.posZ);
       person.root.rotation.y = personActor.yaw;
       person.setMotion?.(currentMotionPayload());
@@ -2113,11 +2550,12 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
 
     if (layout) updateLayout(personState);
     else if (jointImmediate) { updatePartLiveCorners(); projectionDirty = true; }
+    updateKinematicsPersonObstacle();
     ready = true;
     schedule();
   }
 
-  function view(name) {
+  function view(name, { yaw = 0, immediate = false } = {}) {
     const toDir = vector();
     if (name === 'studio') toDir.copy(studioDirection);
     else if (name === 'front') toDir.set(0, 0, 1);
@@ -2125,6 +2563,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     else if (name === 'top') toDir.set(0, 1, 0.0001).normalize();
     else if (name === 'back') toDir.set(0, 0, -1);
     else throw new Error(`Unknown camera view: ${name}`);
+    if (yaw) toDir.applyAxisAngle(up.set(0, 1, 0), rad(yaw));
 
     const fromDir = vector().subVectors(activeCam.position, orbit.target).normalize();
     const fromDist = activeCam.position.distanceTo(orbit.target);
@@ -2145,7 +2584,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       toDist = baseDist;
     }
 
-    if (reducedMotion || !ready) {
+    if (immediate || reducedMotion || !ready) {
       camAnim = null;
       activeCam.position.copy(orbit.target).addScaledVector(toDir, toDist);
       orthoCam.zoom = 1;
@@ -2237,6 +2676,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
   function setXray(enabled) {
     xrayEnabled = Boolean(enabled);
     applyXrayState(xrayEnabled);
+    renderer.shadowMap.needsUpdate = true;
     schedule();
   }
 
@@ -2292,8 +2732,11 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
   // Pointer interaction: raycast click vs orbit drag + fine hover feedback + multi-touch safety.
   const raycaster = new T.Raycaster();
   const pointer = new T.Vector2();
+  const floorPlane = new T.Plane(new T.Vector3(0, 1, 0), 0);
+  const floorHitPoint = new T.Vector3();
   const activePointers = new Set();
   let pointerDown = null;
+  let rightDown = null;
 
   function pickInteractive(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
@@ -2360,12 +2803,64 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     activePointers.add(e.pointerId);
     if (activePointers.size > 1) {
       pointerDown = null;
+      rightDown = null;
       setHoverHit(null);
       return;
     }
-    if (e.button === 0) pointerDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
-    canvas.style.cursor = 'grabbing';
+    if (e.button === 0) {
+      pointerDown = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      canvas.style.cursor = 'grabbing';
+    } else if (e.button === 2) {
+      rightDown = { x: e.clientX, y: e.clientY };
+    }
   });
+  canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const movedRight = rightDown ? Math.hypot(e.clientX - rightDown.x, e.clientY - rightDown.y) : 0;
+    rightDown = null;
+    if (movedRight > 8 || !ready) return;
+    const stageRect = container.getBoundingClientRect();
+    const x = e.clientX - stageRect.left;
+    const y = e.clientY - stageRect.top;
+    const hit = pickInteractive(e.clientX, e.clientY);
+    if (hit) {
+      const action = hit.userData.interactive;
+      const partObj = hit.userData.part ?? null;
+      const partId = partObj?.def.id ?? null;
+      const slotId = partObj?.def.slot ?? null;
+      const allBoxes = collectWorldPartBoxes();
+      const staticBoxes = allBoxes.filter(b => !b.jointId);
+      const seats = detectSeats(spec, staticBoxes);
+      const seatHit = partId ? seats.find(s => s.id === partId) ?? null : null;
+      callbacks.onContextMenu?.({
+        kind: 'hit',
+        action,
+        partId,
+        slotId,
+        seat: seatHit ? { id: seatHit.id, label: seatHit.label, isSeated: personActor.seatedSeat?.id === seatHit.id } : null,
+        isOpen: action?.type === 'joint' ? (joints.get(action.id)?.current ?? 0) > 0.45 : undefined,
+        isOn: action?.type === 'switch' ? (switches.get(action.id)?.target ?? 0) >= 0.5 : undefined,
+        x,
+        y
+      });
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, activeCam);
+    if (raycaster.ray.intersectPlane(floorPlane, floorHitPoint)) {
+      callbacks.onContextMenu?.({
+        kind: 'floor',
+        floorPoint: [floorHitPoint.x, floorHitPoint.z],
+        x,
+        y
+      });
+    }
+  }, { capture: true });
   canvas.addEventListener('pointermove', e => {
     if (activePointers.size > 1) return;
     if (pointerDown && e.pointerId === pointerDown.id) {
@@ -2681,7 +3176,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       person.root.visible = savedPersonVis;
       person.root.position.copy(savedPersonPos);
       person.root.rotation.y = savedPersonRotY;
-      if (personActor.running || personActor.hasMoved) person.setMotion?.(currentMotionPayload());
+      if (personActor.running || personActor.directed || personActor.hasMoved) person.setMotion?.(currentMotionPayload());
       showGuides = savedShowGuides;
       guides.set(showGuides, dims);
       projectionMode = savedMode;
@@ -2734,6 +3229,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     setPersonAutoRun,
     isPersonAutoRunning: () => personActor.running,
     resetPersonPosition,
+    commandPerson,
     hasXrayTargets,
     setHotspots,
     setLocale,
