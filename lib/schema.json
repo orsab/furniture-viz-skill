@@ -1,0 +1,35 @@
+{
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "name", "description", "dimensions", "slots", "options", "joints", "switches", "parts", "inscription", "evidence"],
+  "properties": {
+    "version": {"type":"integer","enum":[1]},
+    "name": {"$ref":"#/$defs/label"}, "description": {"type":"string","maxLength":2000},
+    "dimensions": {"type":"object","additionalProperties":false,"required":["width","height","depth"],"properties":{"width":{"$ref":"#/$defs/range"},"height":{"$ref":"#/$defs/range"},"depth":{"$ref":"#/$defs/range"}}},
+    "slots": {"type":"array","maxItems":48,"items":{"$ref":"#/$defs/slot"}},
+    "options": {"type":"array","maxItems":24,"items":{"$ref":"#/$defs/option"}},
+    "joints": {"type":"array","maxItems":64,"items":{"$ref":"#/$defs/joint"}},
+    "switches": {"type":"array","maxItems":32,"items":{"$ref":"#/$defs/switch"}},
+    "parts": {"type":"array","minItems":1,"maxItems":1024,"items":{"$ref":"#/$defs/part"}},
+    "inscription": {"anyOf":[{"$ref":"#/$defs/inscription"},{"type":"null"}]},
+    "evidence": {"type":"array","minItems":3,"maxItems":1024,"items":{"$ref":"#/$defs/evidence"}}
+  },
+  "$defs": {
+    "id": {"type":"string","pattern":"^[a-z][a-z0-9_-]{0,47}$"},
+    "label": {"type":"string","minLength":1,"maxLength":120},
+    "mm": {"type":"integer","minimum":1,"maximum":20000},
+    "range": {"type":"object","additionalProperties":false,"required":["min","value","max"],"properties":{"min":{"$ref":"#/$defs/mm"},"value":{"$ref":"#/$defs/mm"},"max":{"$ref":"#/$defs/mm"}}},
+    "coord": {"anyOf":[{"type":"number","minimum":-100000,"maximum":100000},{"type":"string","maxLength":32,"pattern":"^-?[0-9]+(?:\\.[0-9]+)?%(?:[+-][0-9]+(?:\\.[0-9]+)?)?$"}]},
+    "vec": {"type":"array","minItems":3,"maxItems":3,"items":{"$ref":"#/$defs/coord"}},
+    "angles": {"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":-360,"maximum":360}},
+    "refOrNull": {"anyOf":[{"$ref":"#/$defs/id"},{"type":"null"}]},
+    "finish": {"type":"object","additionalProperties":false,"required":["name","color","surface"],"properties":{"name":{"$ref":"#/$defs/label"},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"surface":{"type":"string","enum":["wood","fabric","metal","paint"]}}},
+    "slot": {"type":"object","additionalProperties":false,"required":["id","label","finishes"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"finishes":{"type":"array","minItems":1,"maxItems":64,"items":{"$ref":"#/$defs/finish"}}}},
+    "option": {"type":"object","additionalProperties":false,"required":["id","label","choices"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"choices":{"type":"array","minItems":2,"maxItems":32,"items":{"$ref":"#/$defs/label"}}}},
+    "joint": {"type":"object","additionalProperties":false,"required":["id","label","type","pivot","travel"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"type":{"type":"string","enum":["hinge","slide","flap","slide-x","lift"]},"pivot":{"$ref":"#/$defs/vec"},"travel":{"type":"number","minimum":-20000,"maximum":20000}}},
+    "switch": {"type":"object","additionalProperties":false,"required":["id","label","kind","parts","defaultOn","joint","light"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"kind":{"type":"string","enum":["light","toggle","rocker","push"]},"parts":{"type":"array","minItems":1,"maxItems":32,"items":{"$ref":"#/$defs/id"}},"defaultOn":{"type":"boolean"},"joint":{"$ref":"#/$defs/refOrNull"},"light":{"anyOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["center","color","intensity","distance","emissiveParts"],"properties":{"center":{"$ref":"#/$defs/vec"},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"intensity":{"type":"number","minimum":0.1,"maximum":50},"distance":{"type":"number","minimum":100,"maximum":10000},"emissiveParts":{"type":"array","maxItems":32,"items":{"$ref":"#/$defs/id"}}}}]}}},
+    "condition": {"type":"object","additionalProperties":false,"required":["option","choice"],"properties":{"option":{"$ref":"#/$defs/id"},"choice":{"$ref":"#/$defs/label"}}},
+    "part": {"type":"object","additionalProperties":false,"required":["id","shape","size","center","rotation","slot","joint","when","asset"],"properties":{"id":{"$ref":"#/$defs/id"},"shape":{"type":"string","enum":["box","cylinder","ellipsoid","glb"]},"size":{"$ref":"#/$defs/vec"},"center":{"$ref":"#/$defs/vec"},"rotation":{"$ref":"#/$defs/angles"},"slot":{"$ref":"#/$defs/refOrNull"},"joint":{"$ref":"#/$defs/refOrNull"},"when":{"type":"array","maxItems":24,"items":{"$ref":"#/$defs/condition"}},"asset":{"anyOf":[{"type":"string","maxLength":120,"pattern":"^[a-zA-Z0-9][a-zA-Z0-9._ -]*\\.glb$"},{"type":"null"}]}}},
+    "inscription": {"type":"object","additionalProperties":false,"required":["center","width","height","joint"],"properties":{"center":{"$ref":"#/$defs/vec"},"width":{"$ref":"#/$defs/mm"},"height":{"$ref":"#/$defs/mm"},"joint":{"$ref":"#/$defs/refOrNull"}}},
+    "evidence": {"type":"object","additionalProperties":false,"required":["field","source","note","status"],"properties":{"field":{"type":"string","minLength":1,"maxLength":120},"source":{"type":"string","minLength":1,"maxLength":240},"note":{"type":"string","minLength":1,"maxLength":1000},"status":{"type":"string","enum":["stated","estimated","conflict","unknown"]}}}
+  }
+}

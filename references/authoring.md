@@ -1,0 +1,44 @@
+# Authoring a reviewed furniture spec
+
+The schema defines the JSON shape; `tools/review.mjs` checks relationships and size limits with the same validator used for export. Keep all required keys, including `null` or `[]` where applicable. Never invent assets, options or evidence to fill a schema. Build one identifiable design per draft; if the input depicts several designs, ask which to visualize.
+
+## From a sheet to geometry
+
+1. Read the title blocks, units, revision marks and callouts on every relevant page. Match front/side/plan photos to the same design, not a similarly named variant. A stated “overall width” includes the complete extent specified, not automatically a panel width. Label the front; if handedness or orientation affects the model and cannot be determined, ask.
+2. Establish width × height × depth at the default setting. `1 in = 25.4 mm`, `1 cm = 10 mm`. Note rounding in the evidence, especially if it changes a quoted dimension. Do not derive real-world size from perspective, a person in a photo, the image resolution or an unverified print scale. Keep potentially adjustable ranges fixed unless a source or the user defines the interval.
+3. Decompose into recognizable pieces (e.g. carcase panels, doors, pulls, plinth), not one block per item name. Keep observed surfaces distinct from guessed rear faces or hidden fasteners. A painted finish in a photograph is not evidence of its underlying wood species. Ask which finishes are choices versus a palette illustration.
+4. Build closed/rest positions first, then moving assemblies and variant geometry. Sanity-check floor contact, outside extents, gaps, colliding panels and sizes at **both extremes** of each range. Explicitly discuss a missing detail if ignoring it would misrepresent the design. The runtime is not a collision/engineering solver.
+
+## Coordinates and controls
+
+| Concept | Convention |
+|---|---|
+| Dimensions | `dimensions.width/height/depth` each have integer-mm `min`, `value`, `max` in nondecreasing order; `value` is the initial setting. A fixed 750 mm height is `{"min":750,"value":750,"max":750}`. |
+| Axes | X = width, Y = up, Z = depth, **+Z front**. X and Z are centered on the footprint; Y=0 is the floor. A neutral part position is its center in the overall model frame. |
+| Vectors | `size` and `center` have three entries. A number is mm; `"50%"` is half the corresponding overall dimension; `"50%-9"` is half minus 9 mm. No expressions other than percentage + optional signed mm offset. Use absolute numbers for hardware thickness that must not stretch. `rotation` is three **numeric degrees**, not coordinates or radians. |
+| Parts | `box`, `cylinder`, `ellipsoid` are sized by full extents in X/Y/Z, tagged with a declared finish slot and `asset:null`. Use a local, static, self-contained uncompressed glTF 2.0 `.glb` for a supplied mesh: `shape:"glb"`, `asset` a bare approved filename and `size` the intended full extents; a `null` slot preserves its own materials. Keep the actual file beside the spec; do not reference a URL or external texture. Do not invent a filename when no mesh exists. |
+| Finishes | A slot binds related parts to the same material choice. Each preset supplies name, hex `#rrggbb` color and `wood`, `fabric`, `metal` or `paint`. First preset is default. A custom tint changes appearance, not proof of material species. |
+| Variants | Declare a named option with choices, first as default. Each part’s `when` list tests `{option,choice}` pairs by exact ID/choice text; all must match. `[]` means always visible. Put a distinct left-mounted handle and right-mounted handle behind opposing conditions; don't add menus that change nothing. |
+| Motion | Each joint has `pivot`, signed `travel`, `type` and label. `hinge` rotates about vertical Y in degrees; `flap` rotates about horizontal X in degrees; `slide` translates on Z in mm; `slide-x` translates on X in mm; `lift` translates on Y in mm. Attach a moving door, trim and pull to the same joint with their **absolute closed-pose** centers; do not subtract the pivot a second time. Test the open pose in the interactive viewer (clicking the door or its hotspot pin animates it). |
+| Switches | `[]` unless illuminated or switchable hardware exists. Each switch declares `id`, `label`, `kind` (`light`, `toggle`, `rocker`, or `push`), `parts` (actuator part IDs), `defaultOn`, optional `joint`, and `light` (`null` or `{center, color, intensity, distance, emissiveParts}`). Clicking the switch or its 3D hotspot pin toggles the actuator and light smoothly. |
+| Inscription | `null` unless wanted. Otherwise give the front-facing nameplate center, absolute width/height in mm, optional parent joint. Position it just in front of the surface. The viewer accepts inscription text; source quotations are not inscription defaults. |
+| Person | The viewer supplies a separate scale figure with standing height, build, pose, side, yaw and appearance controls; do **not** add mannequin parts or person fields to the furniture spec. Seated posture does not redefine the standing-height setting. |
+
+For an 18 mm top flush with the upper edge, use `size:["100%",18,"100%"]` and `center:[0,"100%-9",0]`. Its thickness stays constant as overall height changes. A left wall of the same thickness has X center `"-50%+9"`; an interior spanning between two such walls can use X size `"100%-36"` only if every allowed width exceeds 36 mm. Choose panel overlaps deliberately: if the top spans full width, the uprights normally stop at its underside.
+
+## Evidence ledger
+
+Example **private** entries for a hypothetical drafting session, not values to reuse:
+
+```json
+[
+  {"field":"dimensions.width","source":"desk.pdf p.1, front elevation, overall dimension","note":"120 cm across the outermost edges = 1200 mm; fixed-size brief.","status":"stated"},
+  {"field":"dimensions.depth","source":"desk.pdf p.2, side elevation; brief.txt line 4","note":"Drawing: 650 mm; brief: 600 mm. Draft temporarily shows 650 mm. Ask which revision governs.","status":"conflict"},
+  {"field":"parts.top","source":"finish.jpg, front-right edge","note":"Thickness approximated as 18 mm from visible edge; no thickness callout. Not a fabrication dimension.","status":"estimated"},
+  {"field":"joints.flap","source":"desk.pdf p.3, detail C","note":"Dashed swing arc is visible but pivot axis and travel are unreadable. Movement not represented yet.","status":"unknown"}
+]
+```
+
+A real draft also needs its own height evidence and evidence for other significant decisions. To close the depth conflict after the human selects the side elevation, update the actual numeric range and cite the decision in `source`/`note`, retaining both original values. To close the flap issue, capture a clarified representable joint, an approved static representation, or an explicit exclusion from the requested scope. If an estimate is accepted for visualization, preserve its status and record the acceptance. **Never erase a live issue or promote a guess to fact.** Keep original sources and prior draft revisions in the private workspace.
+
+The quality gate is two-part: structural validation **and** human comparison to the original evidence. Final review should name what the model does not show. Customer-facing metadata and any embedded assets remain public even though the exporter omits private source/note fields.

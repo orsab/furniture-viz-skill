@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "Linea sideboard",
+  "description": "A low cabinet with a hinged door, a pull-out drawer and an open display bay. Explore the joinery, finishes and scale.",
+  "dimensions": {"width":{"min":1100,"value":1400,"max":1800},"height":{"min":660,"value":780,"max":960},"depth":{"min":360,"value":420,"max":550}},
+  "slots": [
+    {"id":"case","label":"Cabinet body","finishes":[{"name":"Natural oak","color":"#c29b70","surface":"wood"},{"name":"Smoked walnut","color":"#72533d","surface":"wood"},{"name":"Chalk","color":"#dedbd0","surface":"paint"}]},
+    {"id":"fronts","label":"Door & drawer fronts","finishes":[{"name":"Moss","color":"#6a7666","surface":"paint"},{"name":"Clay","color":"#b77c62","surface":"paint"},{"name":"Natural oak","color":"#c29b70","surface":"wood"}]},
+    {"id":"hardware","label":"Hardware","finishes":[{"name":"Brushed brass","color":"#b49963","surface":"metal"},{"name":"Graphite","color":"#434746","surface":"metal"},{"name":"Satin nickel","color":"#b8bdbe","surface":"metal"}]}
+  ],
+  "options": [
+    {"id":"pulls","label":"Handle style","choices":["Bar pulls","Round knobs"]},
+    {"id":"shelves","label":"Open bay","choices":["One shelf","Two shelves","No shelves"]},
+    {"id":"base","label":"Base style","choices":["Timber feet","Recessed plinth"]}
+  ],
+  "joints": [
+    {"id":"door","label":"Left door","type":"hinge","pivot":["-50%+20",145,"50%-1"],"travel":-105},
+    {"id":"drawer","label":"Upper drawer","type":"slide","pivot":[0,0,0],"travel":235}
+  ],
+  "switches": [
+    {
+      "id":"bay_light",
+      "label":"Display bay light",
+      "kind":"toggle",
+      "parts":["bay-switch-plate","bay-switch-toggle","bay-switch-led"],
+      "defaultOn":false,
+      "joint":null,
+      "light":{
+        "center":["25%-4.5","100%-224","50%-42"],
+        "color":"#ffd9a0",
+        "intensity":3.0,
+        "distance":1200,
+        "emissiveParts":["bay-led-strip","bay-switch-led"]
+      }
+    }
+  ],
+  "parts": [
+    {"id":"top","shape":"box","size":["100%",20,"100%"],"center":[0,"100%-10",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"bottom","shape":"box","size":["100%",20,"100%"],"center":[0,135,0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"left-side","shape":"box","size":[18,"100%-165","100%"],"center":["-50%+9","50%+62.5",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"right-side","shape":"box","size":[18,"100%-165","100%"],"center":["50%-9","50%+62.5",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"divider","shape":"box","size":[18,"100%-165","100%-10"],"center":[0,"50%+62.5",5],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"back","shape":"box","size":["100%-36","100%-165",10],"center":[0,"50%+62.5","-50%+5"],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"foot-lf","shape":"cylinder","size":[52,125,52],"center":["-50%+70",62.5,"50%-55"],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"base","choice":"Timber feet"}],"asset":null},
+    {"id":"foot-rf","shape":"cylinder","size":[52,125,52],"center":["50%-70",62.5,"50%-55"],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"base","choice":"Timber feet"}],"asset":null},
+    {"id":"foot-lb","shape":"cylinder","size":[52,125,52],"center":["-50%+70",62.5,"-50%+55"],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"base","choice":"Timber feet"}],"asset":null},
+    {"id":"foot-rb","shape":"cylinder","size":[52,125,52],"center":["50%-70",62.5,"-50%+55"],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"base","choice":"Timber feet"}],"asset":null},
+    {"id":"plinth","shape":"box","size":["100%-112",125,"100%-92"],"center":[0,62.5,0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"base","choice":"Recessed plinth"}],"asset":null},
+    {"id":"door-front","shape":"box","size":["50%-31","100%-169",18],"center":["-25%+4.5","50%+62.5","50%-10"],"rotation":[0,0,0],"slot":"fronts","joint":"door","when":[],"asset":null},
+    {"id":"left-shelf","shape":"box","size":["50%-27",18,"100%-44"],"center":["-25%+4.5","50%+62",-4],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"drawer-face","shape":"box","size":["50%-31",166,18],"center":["25%-4.5","100%-105","50%-10"],"rotation":[0,0,0],"slot":"fronts","joint":"drawer","when":[],"asset":null},
+    {"id":"drawer-bed","shape":"box","size":["50%-46",12,"100%-62"],"center":["25%-4.5","100%-178",-3],"rotation":[0,0,0],"slot":"case","joint":"drawer","when":[],"asset":null},
+    {"id":"drawer-wall-l","shape":"box","size":[12,104,"100%-45"],"center":[23,"100%-120",-3],"rotation":[0,0,0],"slot":"case","joint":"drawer","when":[],"asset":null},
+    {"id":"drawer-wall-r","shape":"box","size":[12,104,"100%-45"],"center":["50%-32","100%-120",-3],"rotation":[0,0,0],"slot":"case","joint":"drawer","when":[],"asset":null},
+    {"id":"drawer-wall-b","shape":"box","size":["50%-70",104,12],"center":["25%-4.5","100%-120","-50%+26"],"rotation":[0,0,0],"slot":"case","joint":"drawer","when":[],"asset":null},
+    {"id":"bay-ceiling","shape":"box","size":["50%-27",18,"100%-13"],"center":["25%-4.5","100%-201",4],"rotation":[0,0,0],"slot":"case","joint":null,"when":[],"asset":null},
+    {"id":"one-shelf","shape":"box","size":["50%-27",18,"100%-26"],"center":["25%-4.5","50%-24",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"shelves","choice":"One shelf"}],"asset":null},
+    {"id":"two-shelf-lower","shape":"box","size":["50%-27",18,"100%-26"],"center":["25%-4.5","33%+30",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"shelves","choice":"Two shelves"}],"asset":null},
+    {"id":"two-shelf-upper","shape":"box","size":["50%-27",18,"100%-26"],"center":["25%-4.5","66%-87",0],"rotation":[0,0,0],"slot":"case","joint":null,"when":[{"option":"shelves","choice":"Two shelves"}],"asset":null},
+    {"id":"door-pull","shape":"box","size":[12,112,23],"center":[-46,"50%+62.5","50%+10.5"],"rotation":[0,0,0],"slot":"hardware","joint":"door","when":[{"option":"pulls","choice":"Bar pulls"}],"asset":null},
+    {"id":"drawer-pull","shape":"box","size":[112,12,23],"center":["25%-4.5","100%-105","50%+10.5"],"rotation":[0,0,0],"slot":"hardware","joint":"drawer","when":[{"option":"pulls","choice":"Bar pulls"}],"asset":null},
+    {"id":"door-knob","shape":"ellipsoid","size":[27,27,32],"center":[-46,"50%+62.5","50%+13"],"rotation":[0,0,0],"slot":"hardware","joint":"door","when":[{"option":"pulls","choice":"Round knobs"}],"asset":null},
+    {"id":"drawer-knob","shape":"ellipsoid","size":[27,27,32],"center":["25%-4.5","100%-105","50%+13"],"rotation":[0,0,0],"slot":"hardware","joint":"drawer","when":[{"option":"pulls","choice":"Round knobs"}],"asset":null},
+    {"id":"bay-led-strip","shape":"box","size":["50%-60",6,12],"center":["25%-4.5","100%-213","50%-40"],"rotation":[0,0,0],"slot":"hardware","joint":null,"when":[],"asset":null},
+    {"id":"bay-switch-plate","shape":"box","size":[4,44,24],"center":[11,"100%-244","50%-36"],"rotation":[0,0,0],"slot":"hardware","joint":null,"when":[],"asset":null},
+    {"id":"bay-switch-toggle","shape":"cylinder","size":[6,12,6],"center":[17,"100%-244","50%-36"],"rotation":[0,0,-90],"slot":"hardware","joint":null,"when":[],"asset":null},
+    {"id":"bay-switch-led","shape":"ellipsoid","size":[3,5,5],"center":[13.5,"100%-230","50%-36"],"rotation":[0,0,0],"slot":"hardware","joint":null,"when":[],"asset":null}
+  ],
+  "inscription":{"center":["-25%+4.5",204,"50%+0.5"],"width":126,"height":28,"joint":"door"},
+  "evidence":[
+    {"field":"dimensions.width","source":"linea-elevations.pdf p.1, front baseline; linea-brief.txt, envelope","note":"1400 mm on sheet; brief permits 1100–1800 mm.","status":"stated"},
+    {"field":"dimensions.height","source":"linea-elevations.pdf p.1, front left callout; linea-brief.txt, envelope","note":"780 mm on sheet; brief permits 660–960 mm.","status":"stated"},
+    {"field":"dimensions.depth","source":"linea-elevations.pdf p.1, right side baseline; linea-brief.txt, envelope","note":"420 mm enclosure, 360–550 mm. Handles protrude beyond this dimension.","status":"stated"},
+    {"field":"finishes","source":"linea-finishes.png, three labeled rows; linea-brief.txt, surfaces","note":"Each row is a separate finish group. The samples represent colors for visualization, not calibrated physical finishes.","status":"stated"},
+    {"field":"construction, motion and inscription","source":"linea-brief.txt, paragraph on body construction; linea-elevations.pdf p.1, front view and caption","note":"The drawing shows the default closed configuration. The brief defines alternate handles, shelving, feet, 105-degree swing, 235 mm slide and nameplate size.","status":"stated"},
+    {"field":"hardware setback and shelf spacing","source":"Illustrative design decisions for this example","note":"Exact placement is not dimensioned in the design brief; accepted for a visual study only.","status":"estimated"},
+    {"field":"switches.bay_light","source":"linea-brief.txt, open bay lighting note","note":"Exact LED strip profile, color temperature and switch position are estimated for visualization only.","status":"estimated"}
+  ]
+}

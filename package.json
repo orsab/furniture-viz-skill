@@ -1,0 +1,17 @@
+{
+  "name": "furniture-visualizer-skill",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "node tools/compile.mjs",
+    "demo": "node tools/export.mjs --reviewed examples/linea.json dist/index.html --replace",
+    "pack:skill": "node tools/compile.mjs && node tools/package.mjs",
+    "extract": "node tools/extract.mjs",
+    "review": "node tools/review.mjs",
+    "export": "node tools/export.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": { "three": "0.187.0", "esbuild": "0.28.2", "ajv": "8.20.0" }
+}

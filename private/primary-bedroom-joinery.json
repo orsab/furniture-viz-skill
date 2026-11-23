@@ -1,0 +1,5444 @@
+{
+  "version": 1,
+  "name": "Primary bedroom · built-in joinery",
+  "description": "L-shaped wardrobes with two hanging levels, shelving, internal drawers and a recessed mirror and walnut vanity. Preliminary visualization; not a fabrication drawing.",
+  "dimensions": {
+    "width": {
+      "min": 4250,
+      "value": 4250,
+      "max": 4250
+    },
+    "height": {
+      "min": 2740,
+      "value": 2740,
+      "max": 2740
+    },
+    "depth": {
+      "min": 1810,
+      "value": 1810,
+      "max": 1810
+    }
+  },
+  "slots": [
+    {
+      "id": "cashmere",
+      "label": "Wardrobe fronts",
+      "finishes": [
+        {
+          "name": "EGGER U702 PM · matte cashmere",
+          "color": "#c9bdab",
+          "surface": "paint"
+        }
+      ]
+    },
+    {
+      "id": "linen",
+      "label": "Carcass and shelves",
+      "finishes": [
+        {
+          "name": "EGGER F416 ST10 · fabric effect",
+          "color": "#b8a992",
+          "surface": "fabric"
+        }
+      ]
+    },
+    {
+      "id": "walnut",
+      "label": "Vanity flap",
+      "finishes": [
+        {
+          "name": "Oberflex · American walnut",
+          "color": "#745746",
+          "surface": "wood"
+        }
+      ]
+    },
+    {
+      "id": "stone",
+      "label": "Basin",
+      "finishes": [
+        {
+          "name": "Dekton Khalo · polished stone approximation",
+          "color": "#a39478",
+          "surface": "paint"
+        }
+      ]
+    },
+    {
+      "id": "bronze",
+      "label": "Tap",
+      "finishes": [
+        {
+          "name": "hansgrohe · brushed bronze",
+          "color": "#a48858",
+          "surface": "metal"
+        }
+      ]
+    },
+    {
+      "id": "brass",
+      "label": "Pulls and hanging rails",
+      "finishes": [
+        {
+          "name": "Dark brushed brass",
+          "color": "#93734a",
+          "surface": "metal"
+        }
+      ]
+    },
+    {
+      "id": "mirror",
+      "label": "Mirrored fronts",
+      "finishes": [
+        {
+          "name": "Polished mirror · illustrative metallic surface",
+          "color": "#c8cdd0",
+          "surface": "metal"
+        }
+      ]
+    },
+    {
+      "id": "dark",
+      "label": "Recesses and appliance",
+      "finishes": [
+        {
+          "name": "Neutral graphite",
+          "color": "#464642",
+          "surface": "paint"
+        }
+      ]
+    },
+    {
+      "id": "opal",
+      "label": "LED diffuser",
+      "finishes": [
+        {
+          "name": "Opal white",
+          "color": "#f4e8d3",
+          "surface": "paint"
+        }
+      ]
+    }
+  ],
+  "options": [],
+  "joints": [
+    {
+      "id": "b-left-drawer-0",
+      "label": "B · hanging bay drawer 1",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-mid-drawer-0",
+      "label": "B · shelving bay drawer 1",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-left-drawer-1",
+      "label": "B · hanging bay drawer 2",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-mid-drawer-1",
+      "label": "B · shelving bay drawer 2",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-left-drawer-2",
+      "label": "B · hanging bay drawer 3",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-mid-drawer-2",
+      "label": "B · shelving bay drawer 3",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "fridge-top-drawer",
+      "label": "B · drawer above mini fridge",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "right-small-drawer",
+      "label": "B · short drawer",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "right-wide-drawer-0",
+      "label": "B · full-width drawer 1",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "right-wide-drawer-1",
+      "label": "B · full-width drawer 2",
+      "type": "slide",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "b-door-1",
+      "label": "B · left door",
+      "type": "hinge",
+      "pivot": [
+        -1475,
+        0,
+        -305
+      ],
+      "travel": -100
+    },
+    {
+      "id": "b-door-2",
+      "label": "B · middle door",
+      "type": "hinge",
+      "pivot": [
+        5,
+        0,
+        -305
+      ],
+      "travel": 100
+    },
+    {
+      "id": "b-door-3",
+      "label": "B · utility door",
+      "type": "hinge",
+      "pivot": [
+        5,
+        0,
+        -305
+      ],
+      "travel": -100
+    },
+    {
+      "id": "b-door-4",
+      "label": "B · right bay left door",
+      "type": "hinge",
+      "pivot": [
+        1035,
+        0,
+        -305
+      ],
+      "travel": -100
+    },
+    {
+      "id": "b-door-5",
+      "label": "B · right bay right door",
+      "type": "hinge",
+      "pivot": [
+        2125,
+        0,
+        -305
+      ],
+      "travel": 100
+    },
+    {
+      "id": "a-drawer-1",
+      "label": "A · internal drawer 1",
+      "type": "slide-x",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "a-drawer-2",
+      "label": "A · internal drawer 2",
+      "type": "slide-x",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "a-drawer-3",
+      "label": "A · internal drawer 3",
+      "type": "slide-x",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "a-drawer-4",
+      "label": "A · internal drawer 4",
+      "type": "slide-x",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "travel": 320
+    },
+    {
+      "id": "a-door-1",
+      "label": "A · door 1",
+      "type": "hinge",
+      "pivot": [
+        -1525,
+        0,
+        905
+      ],
+      "travel": -100
+    },
+    {
+      "id": "a-door-2",
+      "label": "A · door 2",
+      "type": "hinge",
+      "pivot": [
+        -1525,
+        0,
+        -235
+      ],
+      "travel": 100
+    },
+    {
+      "id": "mirror-door",
+      "label": "B · mirrored storage",
+      "type": "hinge",
+      "pivot": [
+        503,
+        0,
+        -390
+      ],
+      "travel": -85
+    },
+    {
+      "id": "sink-flap",
+      "label": "B · walnut sink service flap",
+      "type": "flap",
+      "pivot": [
+        760,
+        302,
+        -288
+      ],
+      "travel": 68
+    }
+  ],
+  "switches": [
+    {
+      "id": "mirror-lights",
+      "label": "Mirror-side LED strips",
+      "kind": "toggle",
+      "parts": [
+        "vanity-light-control"
+      ],
+      "defaultOn": false,
+      "joint": null,
+      "light": {
+        "center": [
+          760,
+          1840,
+          -244
+        ],
+        "color": "#ffdbab",
+        "intensity": 7,
+        "distance": 900,
+        "emissiveParts": [
+          "mirror-led-1",
+          "mirror-led-2"
+        ]
+      }
+    }
+  ],
+  "parts": [
+    {
+      "id": "corner-back",
+      "shape": "box",
+      "size": [
+        580,
+        2670,
+        16
+      ],
+      "center": [
+        -1835,
+        1395,
+        -897
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "corner-l",
+      "shape": "box",
+      "size": [
+        18,
+        2670,
+        574
+      ],
+      "center": [
+        -2116,
+        1395,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "corner-r",
+      "shape": "box",
+      "size": [
+        18,
+        2670,
+        574
+      ],
+      "center": [
+        -1554,
+        1395,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "corner-base",
+      "shape": "box",
+      "size": [
+        544,
+        18,
+        574
+      ],
+      "center": [
+        -1835,
+        69,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "corner-top",
+      "shape": "box",
+      "size": [
+        544,
+        18,
+        574
+      ],
+      "center": [
+        -1835,
+        2721,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "corner-plinth",
+      "shape": "box",
+      "size": [
+        554,
+        60,
+        510
+      ],
+      "center": [
+        -1835,
+        30,
+        -635
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "blind-corner-front",
+      "shape": "box",
+      "size": [
+        576,
+        2668,
+        18
+      ],
+      "center": [
+        -1835,
+        1396,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-back",
+      "shape": "box",
+      "size": [
+        2030,
+        2670,
+        16
+      ],
+      "center": [
+        -530,
+        1395,
+        -897
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-l",
+      "shape": "box",
+      "size": [
+        18,
+        2670,
+        574
+      ],
+      "center": [
+        -1536,
+        1395,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-r",
+      "shape": "box",
+      "size": [
+        18,
+        2670,
+        574
+      ],
+      "center": [
+        476,
+        1395,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-base",
+      "shape": "box",
+      "size": [
+        1994,
+        18,
+        574
+      ],
+      "center": [
+        -530,
+        69,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-top",
+      "shape": "box",
+      "size": [
+        1994,
+        18,
+        574
+      ],
+      "center": [
+        -530,
+        2721,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-plinth",
+      "shape": "box",
+      "size": [
+        2004,
+        60,
+        510
+      ],
+      "center": [
+        -530,
+        30,
+        -635
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-back",
+      "shape": "box",
+      "size": [
+        1090,
+        2680,
+        16
+      ],
+      "center": [
+        1580,
+        1400,
+        -897
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-l",
+      "shape": "box",
+      "size": [
+        18,
+        2680,
+        574
+      ],
+      "center": [
+        1044,
+        1400,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-r",
+      "shape": "box",
+      "size": [
+        18,
+        2680,
+        574
+      ],
+      "center": [
+        2116,
+        1400,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-base",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        574
+      ],
+      "center": [
+        1580,
+        69,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-top",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        574
+      ],
+      "center": [
+        1580,
+        2731,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-plinth",
+      "shape": "box",
+      "size": [
+        1064,
+        60,
+        510
+      ],
+      "center": [
+        1580,
+        30,
+        -635
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-divider-0",
+      "shape": "box",
+      "size": [
+        18,
+        2634,
+        554
+      ],
+      "center": [
+        -930,
+        1395,
+        -609
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-divider-1",
+      "shape": "box",
+      "size": [
+        18,
+        2634,
+        554
+      ],
+      "center": [
+        -145,
+        1395,
+        -609
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "long-hang-shelf-0",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        555
+      ],
+      "center": [
+        -1233,
+        1610,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "long-hang-shelf-1",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        555
+      ],
+      "center": [
+        -1233,
+        2020,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "long-hang-shelf-2",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        555
+      ],
+      "center": [
+        -1233,
+        2320,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "long-hang-shelf-3",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        555
+      ],
+      "center": [
+        -1233,
+        2590,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "long-hang-rail",
+      "shape": "cylinder",
+      "size": [
+        25,
+        556,
+        25
+      ],
+      "center": [
+        -1231,
+        1510,
+        -580
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "slot": "brass",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-0",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        680,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-1",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        1025,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-2",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        1325,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-3",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        1625,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-4",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        1925,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-5",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        2225,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-center-shelf-6",
+      "shape": "box",
+      "size": [
+        767,
+        18,
+        555
+      ],
+      "center": [
+        -537.5,
+        2525,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-inner-shelf-0",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        480
+      ],
+      "center": [
+        158,
+        700,
+        -649
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-inner-shelf-1",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        480
+      ],
+      "center": [
+        158,
+        1180,
+        -649
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-inner-shelf-2",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        480
+      ],
+      "center": [
+        158,
+        1660,
+        -649
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-inner-shelf-3",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        480
+      ],
+      "center": [
+        158,
+        2140,
+        -649
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-inner-shelf-4",
+      "shape": "box",
+      "size": [
+        588,
+        18,
+        480
+      ],
+      "center": [
+        158,
+        2620,
+        -649
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-0-front",
+      "shape": "box",
+      "size": [
+        563,
+        155,
+        18
+      ],
+      "center": [
+        -1236.5,
+        166,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-0-bottom",
+      "shape": "box",
+      "size": [
+        535,
+        14,
+        470
+      ],
+      "center": [
+        -1236.5,
+        100.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-0-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -1511,
+        162,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-0-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -962,
+        162,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-0-back",
+      "shape": "box",
+      "size": [
+        535,
+        132,
+        14
+      ],
+      "center": [
+        -1236.5,
+        162,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-0-front",
+      "shape": "box",
+      "size": [
+        747,
+        155,
+        18
+      ],
+      "center": [
+        -536.5,
+        166,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-0-bottom",
+      "shape": "box",
+      "size": [
+        719,
+        14,
+        470
+      ],
+      "center": [
+        -536.5,
+        100.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-0-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -903,
+        162,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-0-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -170,
+        162,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-0-back",
+      "shape": "box",
+      "size": [
+        719,
+        132,
+        14
+      ],
+      "center": [
+        -536.5,
+        162,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-1-front",
+      "shape": "box",
+      "size": [
+        563,
+        155,
+        18
+      ],
+      "center": [
+        -1236.5,
+        351,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-1-bottom",
+      "shape": "box",
+      "size": [
+        535,
+        14,
+        470
+      ],
+      "center": [
+        -1236.5,
+        285.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-1-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -1511,
+        347,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-1-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -962,
+        347,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-1-back",
+      "shape": "box",
+      "size": [
+        535,
+        132,
+        14
+      ],
+      "center": [
+        -1236.5,
+        347,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-1-front",
+      "shape": "box",
+      "size": [
+        747,
+        155,
+        18
+      ],
+      "center": [
+        -536.5,
+        351,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-1-bottom",
+      "shape": "box",
+      "size": [
+        719,
+        14,
+        470
+      ],
+      "center": [
+        -536.5,
+        285.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-1-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -903,
+        347,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-1-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -170,
+        347,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-1-back",
+      "shape": "box",
+      "size": [
+        719,
+        132,
+        14
+      ],
+      "center": [
+        -536.5,
+        347,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-2-front",
+      "shape": "box",
+      "size": [
+        563,
+        155,
+        18
+      ],
+      "center": [
+        -1236.5,
+        551,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-2-bottom",
+      "shape": "box",
+      "size": [
+        535,
+        14,
+        470
+      ],
+      "center": [
+        -1236.5,
+        485.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-2-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -1511,
+        547,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-2-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -962,
+        547,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-left-drawer-2-back",
+      "shape": "box",
+      "size": [
+        535,
+        132,
+        14
+      ],
+      "center": [
+        -1236.5,
+        547,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-left-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-2-front",
+      "shape": "box",
+      "size": [
+        747,
+        155,
+        18
+      ],
+      "center": [
+        -536.5,
+        551,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-2-bottom",
+      "shape": "box",
+      "size": [
+        719,
+        14,
+        470
+      ],
+      "center": [
+        -536.5,
+        485.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-2-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -903,
+        547,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-2-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        -170,
+        547,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-mid-drawer-2-back",
+      "shape": "box",
+      "size": [
+        719,
+        132,
+        14
+      ],
+      "center": [
+        -536.5,
+        547,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "b-mid-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fridge-top-drawer-front",
+      "shape": "box",
+      "size": [
+        568,
+        150,
+        18
+      ],
+      "center": [
+        159,
+        650,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "fridge-top-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fridge-top-drawer-bottom",
+      "shape": "box",
+      "size": [
+        540,
+        14,
+        400
+      ],
+      "center": [
+        159,
+        587,
+        -567
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "fridge-top-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fridge-top-drawer-l",
+      "shape": "box",
+      "size": [
+        14,
+        127,
+        400
+      ],
+      "center": [
+        -118,
+        646,
+        -567
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "fridge-top-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fridge-top-drawer-r",
+      "shape": "box",
+      "size": [
+        14,
+        127,
+        400
+      ],
+      "center": [
+        436,
+        646,
+        -567
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "fridge-top-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fridge-top-drawer-back",
+      "shape": "box",
+      "size": [
+        540,
+        127,
+        14
+      ],
+      "center": [
+        159,
+        646,
+        -760
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "fridge-top-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mini-fridge",
+      "shape": "box",
+      "size": [
+        384,
+        510,
+        445
+      ],
+      "center": [
+        152,
+        325,
+        -610
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mini-fridge-pull",
+      "shape": "box",
+      "size": [
+        12,
+        120,
+        30
+      ],
+      "center": [
+        306,
+        480,
+        -370
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "bronze",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-upper-0",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        555
+      ],
+      "center": [
+        1580,
+        1460,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-upper-1",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        555
+      ],
+      "center": [
+        1580,
+        1740,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-upper-2",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        555
+      ],
+      "center": [
+        1580,
+        2020,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-upper-3",
+      "shape": "box",
+      "size": [
+        1054,
+        18,
+        555
+      ],
+      "center": [
+        1580,
+        2300,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-split",
+      "shape": "box",
+      "size": [
+        18,
+        1090,
+        555
+      ],
+      "center": [
+        1610,
+        909,
+        -608
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-shelf-0",
+      "shape": "box",
+      "size": [
+        548,
+        18,
+        555
+      ],
+      "center": [
+        1327,
+        614,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-shelf-1",
+      "shape": "box",
+      "size": [
+        548,
+        18,
+        555
+      ],
+      "center": [
+        1327,
+        900,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-shelf-2",
+      "shape": "box",
+      "size": [
+        548,
+        18,
+        555
+      ],
+      "center": [
+        1327,
+        1190,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-right-shelf-3",
+      "shape": "box",
+      "size": [
+        548,
+        18,
+        555
+      ],
+      "center": [
+        1327,
+        1447,
+        -611.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "short-hang-rail",
+      "shape": "cylinder",
+      "size": [
+        25,
+        460,
+        25
+      ],
+      "center": [
+        1860,
+        1380,
+        -585
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ],
+      "slot": "brass",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-small-drawer-front",
+      "shape": "box",
+      "size": [
+        536,
+        160,
+        18
+      ],
+      "center": [
+        1330,
+        490,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-small-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-small-drawer-bottom",
+      "shape": "box",
+      "size": [
+        508,
+        14,
+        470
+      ],
+      "center": [
+        1330,
+        422,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-small-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-small-drawer-l",
+      "shape": "box",
+      "size": [
+        14,
+        137,
+        470
+      ],
+      "center": [
+        1069,
+        486,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-small-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-small-drawer-r",
+      "shape": "box",
+      "size": [
+        14,
+        137,
+        470
+      ],
+      "center": [
+        1591,
+        486,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-small-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-small-drawer-back",
+      "shape": "box",
+      "size": [
+        508,
+        137,
+        14
+      ],
+      "center": [
+        1330,
+        486,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-small-drawer",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-0-front",
+      "shape": "box",
+      "size": [
+        1036,
+        155,
+        18
+      ],
+      "center": [
+        1580,
+        170,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-0-bottom",
+      "shape": "box",
+      "size": [
+        1008,
+        14,
+        470
+      ],
+      "center": [
+        1580,
+        104.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-0-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        1069,
+        166,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-0-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        2091,
+        166,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-0-back",
+      "shape": "box",
+      "size": [
+        1008,
+        132,
+        14
+      ],
+      "center": [
+        1580,
+        166,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-0",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-1-front",
+      "shape": "box",
+      "size": [
+        1036,
+        155,
+        18
+      ],
+      "center": [
+        1580,
+        350,
+        -358
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-1-bottom",
+      "shape": "box",
+      "size": [
+        1008,
+        14,
+        470
+      ],
+      "center": [
+        1580,
+        284.5,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-1-l",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        1069,
+        346,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-1-r",
+      "shape": "box",
+      "size": [
+        14,
+        132,
+        470
+      ],
+      "center": [
+        2091,
+        346,
+        -602
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "right-wide-drawer-1-back",
+      "shape": "box",
+      "size": [
+        1008,
+        132,
+        14
+      ],
+      "center": [
+        1580,
+        346,
+        -830
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": "right-wide-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "column-keep-clear",
+      "shape": "box",
+      "size": [
+        182,
+        2740,
+        190
+      ],
+      "center": [
+        1148,
+        1370,
+        -808
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-1-panel",
+      "shape": "box",
+      "size": [
+        736,
+        2664,
+        18
+      ],
+      "center": [
+        -1105,
+        1395,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "b-door-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-1-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        -765,
+        945,
+        -274
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "brass",
+      "joint": "b-door-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-2-panel",
+      "shape": "box",
+      "size": [
+        736,
+        2664,
+        18
+      ],
+      "center": [
+        -365,
+        1395,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "b-door-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-2-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        -705,
+        945,
+        -274
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "brass",
+      "joint": "b-door-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-3-panel",
+      "shape": "box",
+      "size": [
+        316,
+        2664,
+        18
+      ],
+      "center": [
+        165,
+        1395,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "b-door-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-3-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        295,
+        945,
+        -274
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "brass",
+      "joint": "b-door-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-4-panel",
+      "shape": "box",
+      "size": [
+        566,
+        2674,
+        18
+      ],
+      "center": [
+        1320,
+        1400,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "b-door-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-4-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        1575,
+        945,
+        -274
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "brass",
+      "joint": "b-door-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-5-panel",
+      "shape": "box",
+      "size": [
+        516,
+        2674,
+        18
+      ],
+      "center": [
+        1865,
+        1400,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "b-door-5",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "b-door-5-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        1635,
+        945,
+        -274
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "brass",
+      "joint": "b-door-5",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-back",
+      "shape": "box",
+      "size": [
+        1140,
+        2620,
+        16
+      ],
+      "center": [
+        -2117,
+        1370,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-side-0",
+      "shape": "box",
+      "size": [
+        18,
+        2620,
+        584
+      ],
+      "center": [
+        -1817,
+        1370,
+        896
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-side-1",
+      "shape": "box",
+      "size": [
+        18,
+        2620,
+        584
+      ],
+      "center": [
+        -1817,
+        1370,
+        -226
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-shelf-0",
+      "shape": "box",
+      "size": [
+        1104,
+        18,
+        570
+      ],
+      "center": [
+        -1823,
+        69,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-shelf-1",
+      "shape": "box",
+      "size": [
+        1104,
+        18,
+        570
+      ],
+      "center": [
+        -1823,
+        2681,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-shelf-2",
+      "shape": "box",
+      "size": [
+        1104,
+        18,
+        570
+      ],
+      "center": [
+        -1823,
+        458,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-shelf-3",
+      "shape": "box",
+      "size": [
+        1104,
+        18,
+        570
+      ],
+      "center": [
+        -1823,
+        1330,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-shelf-4",
+      "shape": "box",
+      "size": [
+        1104,
+        18,
+        570
+      ],
+      "center": [
+        -1823,
+        2530,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-plinth",
+      "shape": "box",
+      "size": [
+        1116,
+        60,
+        490
+      ],
+      "center": [
+        -1857,
+        30,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-rail-0",
+      "shape": "cylinder",
+      "size": [
+        25,
+        1060,
+        25
+      ],
+      "center": [
+        -1811,
+        1300,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        90
+      ],
+      "slot": "brass",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-rail-1",
+      "shape": "cylinder",
+      "size": [
+        25,
+        1060,
+        25
+      ],
+      "center": [
+        -1811,
+        2480,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        90
+      ],
+      "slot": "brass",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-1-front",
+      "shape": "box",
+      "size": [
+        1104,
+        155,
+        18
+      ],
+      "center": [
+        -1575,
+        546,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-1-base",
+      "shape": "box",
+      "size": [
+        1079,
+        14,
+        470
+      ],
+      "center": [
+        -1820,
+        480.5,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-1-l",
+      "shape": "box",
+      "size": [
+        12,
+        131,
+        470
+      ],
+      "center": [
+        -1820,
+        546,
+        881
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-1-r",
+      "shape": "box",
+      "size": [
+        12,
+        131,
+        470
+      ],
+      "center": [
+        -1820,
+        546,
+        -211
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-1-back",
+      "shape": "box",
+      "size": [
+        1079,
+        131,
+        14
+      ],
+      "center": [
+        -2051,
+        546,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-2-front",
+      "shape": "box",
+      "size": [
+        1104,
+        155,
+        18
+      ],
+      "center": [
+        -1575,
+        720,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-2-base",
+      "shape": "box",
+      "size": [
+        1079,
+        14,
+        470
+      ],
+      "center": [
+        -1820,
+        654.5,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-2-l",
+      "shape": "box",
+      "size": [
+        12,
+        131,
+        470
+      ],
+      "center": [
+        -1820,
+        720,
+        881
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-2-r",
+      "shape": "box",
+      "size": [
+        12,
+        131,
+        470
+      ],
+      "center": [
+        -1820,
+        720,
+        -211
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-2-back",
+      "shape": "box",
+      "size": [
+        1079,
+        131,
+        14
+      ],
+      "center": [
+        -2051,
+        720,
+        335
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-3-front",
+      "shape": "box",
+      "size": [
+        537,
+        180,
+        18
+      ],
+      "center": [
+        -1575,
+        190,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-3-base",
+      "shape": "box",
+      "size": [
+        512,
+        14,
+        470
+      ],
+      "center": [
+        -1820,
+        112,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-3-l",
+      "shape": "box",
+      "size": [
+        12,
+        156,
+        470
+      ],
+      "center": [
+        -1820,
+        190,
+        314
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-3-r",
+      "shape": "box",
+      "size": [
+        12,
+        156,
+        470
+      ],
+      "center": [
+        -1820,
+        190,
+        -211
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-3-back",
+      "shape": "box",
+      "size": [
+        512,
+        156,
+        14
+      ],
+      "center": [
+        -2051,
+        190,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-3",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-4-front",
+      "shape": "box",
+      "size": [
+        537,
+        180,
+        18
+      ],
+      "center": [
+        -1575,
+        380,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-4-base",
+      "shape": "box",
+      "size": [
+        512,
+        14,
+        470
+      ],
+      "center": [
+        -1820,
+        302,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-4-l",
+      "shape": "box",
+      "size": [
+        12,
+        156,
+        470
+      ],
+      "center": [
+        -1820,
+        380,
+        314
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-4-r",
+      "shape": "box",
+      "size": [
+        12,
+        156,
+        470
+      ],
+      "center": [
+        -1820,
+        380,
+        -211
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-drawer-4-back",
+      "shape": "box",
+      "size": [
+        512,
+        156,
+        14
+      ],
+      "center": [
+        -2051,
+        380,
+        51.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "linen",
+      "joint": "a-drawer-4",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-door-1-panel",
+      "shape": "box",
+      "size": [
+        557,
+        2630,
+        18
+      ],
+      "center": [
+        -1516,
+        1375,
+        624.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "a-door-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-door-1-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        -1494,
+        945,
+        363
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "brass",
+      "joint": "a-door-1",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-door-2-panel",
+      "shape": "box",
+      "size": [
+        575,
+        2630,
+        18
+      ],
+      "center": [
+        -1516,
+        1375,
+        54.5
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": "a-door-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "a-door-2-pull",
+      "shape": "box",
+      "size": [
+        14,
+        450,
+        29
+      ],
+      "center": [
+        -1494,
+        945,
+        325
+      ],
+      "rotation": [
+        0,
+        90,
+        0
+      ],
+      "slot": "brass",
+      "joint": "a-door-2",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "vanity-back",
+      "shape": "box",
+      "size": [
+        550,
+        2740,
+        18
+      ],
+      "center": [
+        760,
+        1370,
+        -770
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "dark",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-face",
+      "shape": "box",
+      "size": [
+        514,
+        1510,
+        8
+      ],
+      "center": [
+        760,
+        1980,
+        -390
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "mirror",
+      "joint": "mirror-door",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-shelf-0",
+      "shape": "box",
+      "size": [
+        486,
+        14,
+        84
+      ],
+      "center": [
+        760,
+        1500,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-shelf-1",
+      "shape": "box",
+      "size": [
+        486,
+        14,
+        84
+      ],
+      "center": [
+        760,
+        1750,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-shelf-2",
+      "shape": "box",
+      "size": [
+        486,
+        14,
+        84
+      ],
+      "center": [
+        760,
+        2000,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-shelf-3",
+      "shape": "box",
+      "size": [
+        486,
+        14,
+        84
+      ],
+      "center": [
+        760,
+        2250,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-shelf-4",
+      "shape": "box",
+      "size": [
+        486,
+        14,
+        84
+      ],
+      "center": [
+        760,
+        2500,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-upright-510",
+      "shape": "box",
+      "size": [
+        16,
+        1500,
+        100
+      ],
+      "center": [
+        510,
+        1980,
+        -455
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-upright-1010",
+      "shape": "box",
+      "size": [
+        16,
+        1500,
+        100
+      ],
+      "center": [
+        1010,
+        1980,
+        -455
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-cabinet-back",
+      "shape": "box",
+      "size": [
+        520,
+        1500,
+        12
+      ],
+      "center": [
+        760,
+        1980,
+        -510
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fluted-stile-1",
+      "shape": "box",
+      "size": [
+        135,
+        2665,
+        38
+      ],
+      "center": [
+        470,
+        1395,
+        -300
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-0",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        414,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-1",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        430,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-2",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        446,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-3",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        462,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-4",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        478,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-5",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        494,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-6",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        510,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-1-reed-7",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        526,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-led-1",
+      "shape": "box",
+      "size": [
+        12,
+        1500,
+        8
+      ],
+      "center": [
+        514,
+        1970,
+        -362
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "opal",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "fluted-stile-2",
+      "shape": "box",
+      "size": [
+        135,
+        2665,
+        38
+      ],
+      "center": [
+        1050,
+        1395,
+        -300
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-0",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        994,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-1",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1010,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-2",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1026,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-3",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1042,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-4",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1058,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-5",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1074,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-6",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1090,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "stile-2-reed-7",
+      "shape": "box",
+      "size": [
+        10,
+        2665,
+        6
+      ],
+      "center": [
+        1106,
+        1395,
+        -279
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "cashmere",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "mirror-led-2",
+      "shape": "box",
+      "size": [
+        12,
+        1500,
+        8
+      ],
+      "center": [
+        1006,
+        1970,
+        -362
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "opal",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "vanity-l",
+      "shape": "box",
+      "size": [
+        18,
+        500,
+        386
+      ],
+      "center": [
+        505,
+        524,
+        -479
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "vanity-r",
+      "shape": "box",
+      "size": [
+        18,
+        500,
+        386
+      ],
+      "center": [
+        1015,
+        524,
+        -479
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "vanity-floor",
+      "shape": "box",
+      "size": [
+        520,
+        18,
+        382
+      ],
+      "center": [
+        760,
+        285,
+        -480
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "linen",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "sink-flap-face",
+      "shape": "box",
+      "size": [
+        520,
+        470,
+        18
+      ],
+      "center": [
+        760,
+        537,
+        -288
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "sink-flap-grip",
+      "shape": "box",
+      "size": [
+        192,
+        14,
+        15
+      ],
+      "center": [
+        760,
+        748,
+        -273
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-0",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        520,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-1",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        539,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-2",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        558,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-3",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        577,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-4",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        596,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-5",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        615,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-6",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        634,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-7",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        653,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-8",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        672,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-9",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        691,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-10",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        710,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-11",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        729,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-12",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        748,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-13",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        767,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-14",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        786,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-15",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        805,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-16",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        824,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-17",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        843,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-18",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        862,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-19",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        881,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-20",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        900,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-21",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        919,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-22",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        938,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-23",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        957,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-24",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        976,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "walnut-reed-25",
+      "shape": "box",
+      "size": [
+        11,
+        435,
+        3
+      ],
+      "center": [
+        995,
+        530,
+        -278
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "walnut",
+      "joint": "sink-flap",
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "sink-floor",
+      "shape": "box",
+      "size": [
+        545,
+        19,
+        390
+      ],
+      "center": [
+        760,
+        803,
+        -470
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "stone",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "basin-l",
+      "shape": "box",
+      "size": [
+        36,
+        82,
+        390
+      ],
+      "center": [
+        506,
+        842,
+        -470
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "stone",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "basin-r",
+      "shape": "box",
+      "size": [
+        36,
+        82,
+        390
+      ],
+      "center": [
+        1014,
+        842,
+        -470
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "stone",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "basin-front",
+      "shape": "box",
+      "size": [
+        540,
+        82,
+        42
+      ],
+      "center": [
+        760,
+        842,
+        -296
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "stone",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "basin-back",
+      "shape": "box",
+      "size": [
+        540,
+        82,
+        80
+      ],
+      "center": [
+        760,
+        842,
+        -621
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "stone",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "tap-neck",
+      "shape": "cylinder",
+      "size": [
+        26,
+        230,
+        26
+      ],
+      "center": [
+        760,
+        970,
+        -587
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "bronze",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "tap-spout",
+      "shape": "box",
+      "size": [
+        23,
+        23,
+        148
+      ],
+      "center": [
+        760,
+        1074,
+        -520
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "bronze",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "tap-aerator",
+      "shape": "cylinder",
+      "size": [
+        21,
+        40,
+        22
+      ],
+      "center": [
+        760,
+        1055,
+        -454
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "bronze",
+      "joint": null,
+      "when": [],
+      "asset": null
+    },
+    {
+      "id": "vanity-light-control",
+      "shape": "box",
+      "size": [
+        26,
+        45,
+        13
+      ],
+      "center": [
+        1040,
+        1170,
+        -277
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "slot": "bronze",
+      "joint": null,
+      "when": [],
+      "asset": null
+    }
+  ],
+  "inscription": null,
+  "evidence": [
+    {
+      "field": "dimensions.width",
+      "source": "Furniture drawing, PDF page 1 · B elevations and plan; user sign-off",
+      "note": "Both B elevations give 425 cm overall; the plan chain reads 427 cm. The user approved 4250 mm as the governing width for the visualization, treating 427 cm as the site dimension.",
+      "status": "stated"
+    },
+    {
+      "field": "dimensions.height",
+      "source": "Furniture drawing, PDF page 1 · B exterior right and left callouts",
+      "note": "Right overall callout is 274 cm; left exterior uses 267 cm plus 6 cm plinth. Draft uses 2740 mm max and a stepped 2730 mm left run; verify ceiling/drop on site.",
+      "status": "stated"
+    },
+    {
+      "field": "dimensions.depth",
+      "source": "Furniture drawing, PDF page 1 · plan, bottom dimension string",
+      "note": "181 cm is the overall plan depth of the L from the back of B to the end of A; B nominal carcass depth 60 cm.",
+      "status": "stated"
+    },
+    {
+      "field": "return-and-bay-widths",
+      "source": "Furniture drawing, PDF page 1 · plan, A interior and B elevations",
+      "note": "A return width is 114 cm in plan, 116 cm in elevation with separate 7 cm strip. B exterior/interior subdivisions also vary by up to several cm. Draft follows outer elevation for B and plan for A; confirm or accept as schematic. A carcass depth (600 mm) is provisional.",
+      "status": "estimated"
+    },
+    {
+      "field": "a-wardrobe",
+      "source": "Furniture drawing, PDF page 1 · A interior and exterior",
+      "note": "Double short hanging, shelves, four depicted internal drawer fronts, matte cashmere doors and vertical pulls. A uses a 2700 mm envelope and 60 mm plinth for preview.",
+      "status": "stated"
+    },
+    {
+      "field": "b-wardrobe",
+      "source": "Furniture drawing, PDF page 1 · B interior/exterior",
+      "note": "Dead corner, mixed-height hanging, shelves, internal drawers, mini fridge and an existing post; shown with approximate panel positions on the chosen frontage.",
+      "status": "stated"
+    },
+    {
+      "field": "wardrobe-hardware",
+      "source": "Furniture drawing, PDF page 1 · elevations and detail notes",
+      "note": "Panel thickness, depth of many internals, door pivot hands/travel, slider travel and exact rail/pull locations are illustrative. Finishes use the named drawing materials with approximate colors/textures; polished mirrors are represented by a metallic surface, not a room reflection.",
+      "status": "estimated"
+    },
+    {
+      "field": "vanity",
+      "source": "Furniture drawing, PDF page 1 · B exterior and material notes",
+      "note": "55 cm niche, 10 cm mirror storage, recessed integrated Dekton Khalo basin, bronze tap and 18 mm walnut flap on bottom hinges; approximate basin shape, plumbing and real wall conditions not modeled.",
+      "status": "estimated"
+    },
+    {
+      "field": "mirror-leds",
+      "source": "Furniture drawing, PDF page 1 · B exterior LED detail",
+      "note": "Two vertical LED channels flank the mirror; detail indicates 12×8 mm grooves and 122–272 cm levels. The control location and lighting intensity are for visual demonstration only.",
+      "status": "estimated"
+    },
+    {
+      "field": "pull-down-hanging",
+      "source": "Furniture drawing, PDF page 1 · bottom-left drawing notes; user sign-off",
+      "note": "The drawing calls for a pull-down mechanism. The user approved showing the rail statically in this preview; linkage, travel, and operating clearance are not represented.",
+      "status": "estimated"
+    },
+    {
+      "field": "post-and-site",
+      "source": "Furniture drawing, PDF page 1 · plan and site coordination notes",
+      "note": "Existing post is shown as a schematic keep-clear volume. Verify actual post position, lowering and spotlights on site; room shell and ceiling fixtures are not modeled.",
+      "status": "estimated"
+    }
+  ]
+}
