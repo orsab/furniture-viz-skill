@@ -1,6 +1,13 @@
 import { axes } from '../lib/coordinates.mjs';
-import { extractPaletteFromRgba, parseMaterialsFromText } from '../lib/materials-parse.mjs';
+import {
+  extractPaletteFromRgba,
+  MATERIAL_CATALOG,
+  parseMaterialsFromText,
+  QUICK_MATERIAL_PRESETS,
+  SURFACE_TYPES
+} from '../lib/materials-parse.mjs';
 import { REACH_ZONE_COLORS, computePersonReachZones } from './person-ai.mjs';
+import { CHARACTER_PRESETS, CHARACTER_TYPES } from './mannequin.mjs';
 
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -117,7 +124,15 @@ const SURFACE_KEY = {
   wood: 'surfaceWood',
   fabric: 'surfaceFabric',
   metal: 'surfaceMetal',
-  paint: 'surfacePaint'
+  paint: 'surfacePaint',
+  marble: 'surfaceMarble',
+  brick: 'surfaceBrick',
+  concrete: 'surfaceConcrete',
+  stone: 'surfaceStone',
+  terrazzo: 'surfaceTerrazzo',
+  tile: 'surfaceTile',
+  leather: 'surfaceLeather',
+  glass: 'surfaceGlass'
 };
 
 export function mountInspector(furniture, person, spec, state, onChange, tr, preserved = null, lightingCtrl = null, personCtrl = null) {
@@ -149,7 +164,8 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
       refresh(visibleParts());
     });
     body.append(scope, note);
-    let swatchRadios = [], writeTint = null, clearBtn = null;
+    let swatchRadios = [], writeTint = null, clearBtn = null, surfaceTypeSel = null;
+    const customSurfaceIdx = new Map();
     function refresh(parts) {
       scope.disabled = !parts.some(p => p.slot === selected.id);
       note.hidden = !scope.disabled;
@@ -158,8 +174,10 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
     function syncPalette() {
       const f = state.finishes[selected.id];
       swatchRadios.forEach((input, idx) => { input.checked = f.index === idx; });
-      const colorVal = f.tint ?? selected.finishes[f.index].color;
+      const activeFinish = selected.finishes[f.index] || selected.finishes[0];
+      const colorVal = f.tint ?? activeFinish.color;
       writeTint?.(colorVal);
+      if (surfaceTypeSel) surfaceTypeSel.value = activeFinish.surface;
       if (clearBtn) clearBtn.disabled = f.tint === null;
     }
     function draw() {
@@ -195,6 +213,40 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
       clearBtn.type = 'button';
       clearBtn.addEventListener('click', () => { f.tint = null; syncPalette(); onChange('immediate'); });
       scope.append(clearBtn);
+      surfaceTypeSel = select(
+        scope,
+        tr.t('surfaceTypeLabel'),
+        SURFACE_TYPES.map(k => [k, tr.t(SURFACE_KEY[k] || k)]),
+        selected.finishes[f.index].surface,
+        nextSurface => {
+          const curFinish = selected.finishes[f.index] || selected.finishes[0];
+          const activeColor = (f.tint ?? curFinish.color).toLowerCase();
+          const matchIdx = selected.finishes.findIndex(
+            item => item.surface === nextSurface && item.color.toLowerCase() === activeColor
+          );
+          if (matchIdx >= 0) {
+            f.index = matchIdx;
+            f.tint = null;
+          } else {
+            const surfaceLabel = tr.t(SURFACE_KEY[nextSurface] || nextSurface);
+            const nextEntry = { name: `${surfaceLabel} (${activeColor.toUpperCase()})`, color: activeColor, surface: nextSurface };
+            let customIdx = customSurfaceIdx.get(selected.id);
+            if (customIdx !== undefined && customIdx >= 0 && customIdx < selected.finishes.length) {
+              selected.finishes[customIdx] = nextEntry;
+            } else {
+              if (selected.finishes.length >= 64) selected.finishes.pop();
+              selected.finishes.push(nextEntry);
+              customIdx = selected.finishes.length - 1;
+              customSurfaceIdx.set(selected.id, customIdx);
+            }
+            f.index = customIdx;
+            f.tint = null;
+          }
+          draw();
+          refresh(visibleParts());
+          onChange('immediate');
+        }
+      );
       syncPalette();
     }
     draw();
@@ -218,8 +270,8 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
     const surfaceWrap = el('label', 'field');
     surfaceWrap.append(el('span', 'field-title', tr.t('matSurfaceLabel')));
     const surfaceSel = el('select');
-    for (const kind of ['paint', 'wood', 'metal', 'fabric']) {
-      surfaceSel.add(new Option(tr.t(SURFACE_KEY[kind]), kind));
+    for (const kind of SURFACE_TYPES) {
+      surfaceSel.add(new Option(tr.t(SURFACE_KEY[kind] || kind), kind));
     }
 
     const btnRow = el('div', 'mat-import-row');
@@ -361,9 +413,34 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
       applyCandidate({ name: hex.toUpperCase(), color: hex, surface: surfaceSel.value, slotId: null });
     });
 
+    const catalogById = new Map(MATERIAL_CATALOG.map(m => [m.id, m]));
+    const libDetails = el('details', 'mat-import mat-library');
+    const libSum = el('summary', null, tr.t('matLibraryTitle'));
+    const libBody = el('div', 'mat-import-body');
+    libBody.append(el('p', 'hint', tr.t('matLibraryHint')));
+    const libGrid = el('div', 'mat-library-grid');
+    for (const matId of QUICK_MATERIAL_PRESETS) {
+      const item = catalogById.get(matId);
+      if (!item) continue;
+      const chip = el('button', 'mat-chip mat-lib-chip');
+      chip.type = 'button';
+      const dot = el('span', 'sample sample-mini');
+      dot.style.setProperty('--sample', item.color);
+      dot.dataset.surface = item.surface;
+      dot.setAttribute('aria-hidden', 'true');
+      const label = tr.lang === 'he' ? item.heName : item.name;
+      chip.append(dot, el('span', null, label));
+      chip.addEventListener('click', () => {
+        applyCandidate({ name: item.name, color: item.color, surface: item.surface, slotId: null });
+      });
+      libGrid.append(chip);
+    }
+    libBody.append(libGrid);
+    libDetails.append(libSum, libBody);
+
     surfaceWrap.append(surfaceSel);
     matBody.append(textLabel, surfaceWrap, btnRow, sketchCanvas, sketchHint, candHead, candStatus, candList);
-    body.append(matDetails);
+    body.append(libDetails, matDetails);
 
     finishesController = {
       focusSlot(slotId) {
@@ -606,7 +683,43 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
   figure.append(el('legend', 'sr-only', tr.t('personSettingsLegend')));
   person.append(figure);
   const { body } = section(figure, 'person-pose', tr.t('sizeAndPose'), true, openSet);
-  const statureCtrl = measure(body, tr.t('standingStature'), tr.mmUnit, p.height, 900, 2200, v => {
+
+  const charWrap = el('div', 'field');
+  charWrap.append(el('span', 'field-title', tr.t('characterType')));
+  const charGroup = el('div', 'mode char-picker');
+  charGroup.setAttribute('role', 'group');
+  charGroup.setAttribute('aria-label', tr.t('characterType'));
+  const charLabelMap = { male: tr.t('charMale'), female: tr.t('charFemale'), child: tr.t('charChild') };
+  const charButtons = CHARACTER_TYPES.map(kind => {
+    const btn = el('button', null, charLabelMap[kind]);
+    btn.type = 'button';
+    btn.setAttribute('aria-pressed', String((p.character || 'male') === kind));
+    btn.addEventListener('click', () => {
+      const prevChar = p.character || 'male';
+      if (prevChar === kind) return;
+      const prevPreset = CHARACTER_PRESETS[prevChar] || CHARACTER_PRESETS.male;
+      const nextPreset = CHARACTER_PRESETS[kind] || CHARACTER_PRESETS.male;
+      p.character = kind;
+      p.height = nextPreset.defaultHeight;
+      for (const [k, defKey] of [['hair', 'defaultHair'], ['top', 'defaultTop'], ['bottom', 'defaultBottom']]) {
+        if ((p[k] || '').toLowerCase() === prevPreset[defKey].toLowerCase()) {
+          p[k] = nextPreset[defKey];
+        }
+      }
+      for (const fn of syncers) fn();
+      onChange('immediate');
+    });
+    charGroup.append(btn);
+    return [kind, btn];
+  });
+  syncers.push(() => {
+    const cur = p.character || 'male';
+    for (const [kind, btn] of charButtons) btn.setAttribute('aria-pressed', String(cur === kind));
+  });
+  charWrap.append(charGroup);
+  body.append(charWrap);
+
+  const statureCtrl = measure(body, tr.t('standingStature'), tr.mmUnit, p.height, 800, 2200, v => {
     p.height = v;
     for (const fn of syncers) fn();
     onChange('immediate');
@@ -628,7 +741,7 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
   syncers.push(() => yawCtrl.setVal(p.yaw));
 
   const { body: colors } = section(figure, 'person-colors', tr.t('figureColors'), false, openSet);
-  for (const [key, label] of [['skin', tr.t('skinTone')], ['top', tr.t('topColor')], ['bottom', tr.t('trouserColor')]]) {
+  for (const [key, label] of [['skin', tr.t('skinTone')], ['hair', tr.t('hairColor')], ['top', tr.t('topColor')], ['bottom', tr.t('trouserColor')]]) {
     const setColor = color(colors, label, p[key], v => { p[key] = v; onChange('immediate'); });
     syncers.push(() => setColor(p[key]));
   }

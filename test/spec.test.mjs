@@ -118,3 +118,46 @@ test('bundled Linea example passes strict export validation and state round-trip
   const state = initialState(linea);
   assert.equal(validateState(linea, structuredClone(state)).switches.bay_light, false);
 });
+
+test('validates all 12 architectural and furniture finish surface types and rejects unknown surface', () => {
+  const allSurfaces = ['wood', 'fabric', 'metal', 'paint', 'marble', 'brick', 'concrete', 'stone', 'terrazzo', 'tile', 'leather', 'glass'];
+  const spec = project();
+  spec.slots[0].finishes = allSurfaces.map((surface, i) => ({
+    name: `Finish ${i}`,
+    color: '#c0b8ad',
+    surface
+  }));
+  assert.equal(validateSpec(spec, { forExport: true }), spec);
+
+  const bad = project();
+  bad.slots[0].finishes = [{ name: 'Plasma', color: '#c0b8ad', surface: 'plasma' }];
+  assert.throws(() => validateSpec(bad, { forExport: true }), /surface/i);
+});
+
+test('person state supports male/female/child characters, hair color, height 800-2200, and legacy setup backfill', () => {
+  const spec = project();
+  const state = initialState(spec);
+  assert.equal(state.person.character, 'male');
+  assert.match(state.person.hair, /^#[\da-f]{6}$/i);
+
+  for (const [character, height] of [['male', 1760], ['female', 1640], ['child', 850]]) {
+    const copy = structuredClone(state);
+    copy.person.character = character;
+    copy.person.height = height;
+    const ok = validateState(spec, copy);
+    assert.equal(ok.person.character, character);
+    assert.equal(ok.person.height, height);
+  }
+
+  // Legacy saved state without character/hair is backfilled cleanly
+  const legacy = structuredClone(state);
+  delete legacy.person.character;
+  delete legacy.person.hair;
+  const migrated = validateState(spec, legacy);
+  assert.equal(migrated.person.character, 'male');
+  assert.match(migrated.person.hair, /^#[\da-f]{6}$/i);
+
+  const badChar = structuredClone(state);
+  badChar.person.character = 'robot';
+  assert.throws(() => validateState(spec, badChar), /Invalid configuration: person/i);
+});

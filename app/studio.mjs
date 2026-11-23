@@ -19,6 +19,7 @@ import {
   isShelfLikePart,
   classifyShelfAccessibility,
   detectSeats,
+  findJointHandleTarget,
   computeInteractionTarget,
   clampPersonOutsideObstacles,
   resolveWalkStandPoint,
@@ -1352,6 +1353,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     reachProgress: 0,
     reachSide: 1,
     reachHeightNorm: 0.55,
+    reachYaw: 0,
     headYaw: 0,
     headPitch: 0,
     idleTime: 0,
@@ -1400,6 +1402,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       yaw: person.root.rotation.y,
       height: personGeometry.height,
       build: personGeometry.build,
+      character: personGeometry.character || 'male',
       seated: personActor.sitBlend > 0.5 || personGeometry.pose === 'seated'
     }));
   }
@@ -1408,13 +1411,37 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     const posMap = liveJointPositions();
     const h = personGeometry?.height || 1700;
     const b = personGeometry?.build || 'regular';
+    const c = personGeometry?.character || 'male';
     return (sx, sz, yaw) => kinematics.isPersonClearOfJointSweep(
       jointId,
       fromP,
       toP,
       posMap,
-      makePersonOBB({ x: sx, z: sz, yaw, height: h, build: b, seated: false })
+      makePersonOBB({ x: sx, z: sz, yaw, height: h, build: b, character: c, seated: false }),
+      { pad: 65 }
     );
+  }
+
+  function getLiveJointHandlePos(jointId) {
+    const j = joints.get(jointId);
+    if (!j) return null;
+    const jBoxes = [];
+    for (const p of parts) {
+      if (!p.anchor.visible || p.joint?.id !== jointId) continue;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const v of p.points) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      }
+      jBoxes.push({ id: p.def.id, slotId: p.def.slot, jointId, minX, maxX, minY, maxY, minZ, maxZ });
+    }
+    const aim = findJointHandleTarget(jBoxes, j.pivot, j.def);
+    return aim ? { x: aim.cx, y: aim.cy, z: aim.cz } : null;
   }
 
   const jointAutoCloseTimers = new Map();
@@ -1460,7 +1487,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         staticBoxes,
         movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
         pivot: j.pivot,
-        isStandClear: makeStandClearChecker(j.id, j.current, res.progress)
+        isStandClear: makeStandClearChecker(j.id, j.current, res.progress),
+        currentProgress: j.current,
+        goal,
+        currentPos: [personActor.posX, personActor.posZ]
       });
       if (target) candidates.push({ ...target, goal, isOpening: goal > 0.5 });
     }
@@ -1554,6 +1584,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       reachProgress: personActor.reachProgress,
       reachSide: personActor.reachSide,
       reachHeightNorm: personActor.reachHeightNorm,
+      reachYaw: personActor.reachYaw,
       headYaw: personActor.headYaw,
       headPitch: personActor.headPitch,
       idleTime: personActor.idleTime,
@@ -1594,7 +1625,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     }
 
     personActor.idleTime += dt;
-    const h = Math.max(900, personGeometry?.height || 1700);
+    const h = Math.max(800, personGeometry?.height || 1700);
 
     if (!activeDriver) {
       personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 6);
@@ -1640,11 +1671,13 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       } else if (next.kind === 'stand') {
         enterWaiting();
       } else {
+        const destX = next.approachX ?? next.standX;
+        const destZ = next.approachZ ?? next.standZ;
         const walkObs = allBoxes.length ? allBoxes : staticBoxes;
-        personActor.path = planFloorPath([personActor.posX, personActor.posZ], [next.standX, next.standZ], walkObs);
+        personActor.path = planFloorPath([personActor.posX, personActor.posZ], [destX, destZ], walkObs);
         personActor.pathIdx = 0;
-        const d0 = Math.hypot(next.standX - personActor.posX, next.standZ - personActor.posZ);
-        personActor.phase = d0 < 24 ? 'turning' : 'walking';
+        const d0 = Math.hypot(destX - personActor.posX, destZ - personActor.posZ);
+        personActor.phase = d0 < 20 ? 'turning' : 'walking';
       }
     };
 
@@ -1674,7 +1707,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
                 staticBoxes,
                 movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
                 pivot: j.pivot,
-                isStandClear: makeStandClearChecker(j.id, j.current, next.goal)
+                isStandClear: makeStandClearChecker(j.id, j.current, next.goal),
+                currentProgress: j.current,
+                goal: next.goal,
+                currentPos: [personActor.posX, personActor.posZ]
               });
               if (refreshed) Object.assign(next, refreshed);
             }
@@ -1735,9 +1771,11 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           } else {
             const { staticBoxes, allBoxes } = buildPersonCandidates();
             const walkObs = allBoxes.length ? allBoxes : staticBoxes;
+            const destX = personActor.currentAction.approachX ?? personActor.currentAction.standX;
+            const destZ = personActor.currentAction.approachZ ?? personActor.currentAction.standZ;
             personActor.path = planFloorPath(
               [personActor.posX, personActor.posZ],
-              [personActor.currentAction.standX, personActor.currentAction.standZ],
+              [destX, destZ],
               walkObs
             );
             personActor.pathIdx = 0;
@@ -1755,14 +1793,14 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         const dx = wp[0] - personActor.posX;
         const dz = wp[1] - personActor.posZ;
         const dist = Math.hypot(dx, dz);
-        if (dist < 18) {
+        const lastWaypoint = personActor.pathIdx === personActor.path.length - 1;
+        if (dist < (lastWaypoint ? 10 : 18)) {
           personActor.pathIdx++;
           if (personActor.pathIdx >= personActor.path.length) {
             personActor.phase = 'turning';
             personActor.phaseTime = 0;
           }
         } else {
-          const lastWaypoint = personActor.pathIdx === personActor.path.length - 1;
           const speed = Math.min(h * .70, Math.max(180, 180 + personActor.walkBlend * h * .62),
             lastWaypoint ? 200 + dist * 3.8 : Infinity);
           const step = Math.min(dist, speed * dt);
@@ -1774,9 +1812,11 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           personActor.posZ = clamped.z;
           personActor.hasMoved = true;
           if (Math.hypot(clamped.x - nextX, clamped.z - nextZ) > 2 && personActor.currentAction) {
+            const destX = personActor.currentAction.approachX ?? personActor.currentAction.standX;
+            const destZ = personActor.currentAction.approachZ ?? personActor.currentAction.standZ;
             const replanned = planFloorPath(
               [personActor.posX, personActor.posZ],
-              [personActor.currentAction.standX, personActor.currentAction.standZ],
+              [destX, destZ],
               liveBoxes
             );
             if (replanned?.length) {
@@ -1801,8 +1841,9 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (!act) {
         enterWaiting();
       } else {
+        const targetYaw = Math.atan2(act.tx - personActor.posX, act.tz - personActor.posZ);
         const turn = personActor.turn ??= {
-          start: personActor.yaw, angle: wrapAngle(act.faceYaw - personActor.yaw), progress: 0
+          start: personActor.yaw, angle: wrapAngle(targetYaw - personActor.yaw), progress: 0
         };
         const duration = Math.min(1.6, .32 + Math.abs(turn.angle) * .48);
         personActor.phaseTime += dt;
@@ -1811,7 +1852,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         personActor.headYaw *= Math.exp(-dt * 8);
         personActor.headPitch = clamp((act.ty - h * 0.85) / 1400, -0.35, 0.3);
         if (turn.progress === 1) {
-          personActor.yaw = act.faceYaw;
+          personActor.yaw = targetYaw;
           personActor.headYaw = 0;
           personActor.turn = null;
           personActor.phase = 'acting';
@@ -1827,9 +1868,9 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (!act) {
         enterWaiting();
       } else {
-        personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
         personActor.phaseTime += dt;
         if (act.kind === 'sit') {
+          personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
           const seat = act.seat;
           const dur = 0.9;
           const u = clamp(personActor.phaseTime / dur, 0, 1);
@@ -1851,20 +1892,92 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
             });
           }
           if (personActor.phaseTime >= dur) enterWaiting();
-        } else if (act.kind === 'joint' || act.kind === 'switch') {
+        } else if (act.kind === 'joint') {
+          const dur = 1.75;
+          const u = clamp(personActor.phaseTime / dur, 0, 1);
+          const targetJoint = joints.get(act.id);
+          if (act.startProgress === undefined) act.startProgress = targetJoint?.current ?? 0;
+          if (act.startX === undefined) act.startX = personActor.posX;
+          if (act.startZ === undefined) act.startZ = personActor.posZ;
+
+          personActor.reachProgress = u;
+          personActor.reachBlend = 1;
+
+          // Step smoothly back from the handle grasp point into the sweep-clear zone just before/as the door swings
+          const stepDist = Math.hypot(act.standX - act.startX, act.standZ - act.startZ);
+          if (stepDist > 20) {
+            const stepU = clamp((u - 0.22) / 0.46, 0, 1);
+            const stepSmooth = stepU * stepU * (3 - 2 * stepU);
+            const prevX = personActor.posX;
+            const prevZ = personActor.posZ;
+            const rawX = act.startX + (act.standX - act.startX) * stepSmooth;
+            const rawZ = act.startZ + (act.standZ - act.startZ) * stepSmooth;
+            const staticBoxes = collectWorldPartBoxes().filter(b => !b.jointId);
+            const safe = clampPersonOutsideObstacles(rawX, rawZ, staticBoxes, 165);
+            personActor.posX = safe.x;
+            personActor.posZ = safe.z;
+            const movedStep = Math.hypot(personActor.posX - prevX, personActor.posZ - prevZ);
+            if (movedStep > 0.2) {
+              personActor.walkPhase = (personActor.walkPhase + movedStep / (h * person.walkTravel) * Math.PI * 2) % (Math.PI * 2);
+            }
+            const stepBlend = stepU > 0 && stepU < 1 ? Math.sin(stepU * Math.PI) * 0.45 : 0;
+            personActor.walkBlend = stepBlend;
+            personActor.hasMoved = true;
+          } else {
+            personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
+          }
+
+          if (u >= 0.28) {
+            if (!personActor.actionFired) {
+              personActor.actionFired = true;
+              callbacks.onPersonAutoAction?.({
+                phase: 'action',
+                actionType: 'joint',
+                id: act.id,
+                label: act.label,
+                goal: act.goal,
+                isOpening: act.isOpening,
+                managed: true
+              });
+            }
+            const pullU = clamp((u - 0.28) / 0.60, 0, 1);
+            const pullSmooth = pullU * pullU * (3 - 2 * pullU);
+            if (targetJoint) {
+              targetJoint.target = act.startProgress + (act.goal - act.startProgress) * pullSmooth;
+              if (act.goal > 0.45) armJointAutoClose(act.id);
+              else clearJointAutoClose(act.id);
+            }
+          }
+
+          // Live hand & gaze tracking of the moving door handle
+          const liveHandle = getLiveJointHandlePos(act.id) || { x: act.tx, y: act.ty, z: act.tz };
+          const aimYaw = Math.atan2(liveHandle.x - personActor.posX, liveHandle.z - personActor.posZ);
+          personActor.yaw = lerpAngle(personActor.yaw, aimYaw, Math.min(1, dt * 4.5));
+          const yawErr = wrapAngle(aimYaw - personActor.yaw);
+          personActor.reachYaw = clamp(yawErr * 0.85, -0.5, 0.5);
+          personActor.reachHeightNorm = clamp(liveHandle.y / h, 0.22, 0.90);
+          personActor.headYaw = clamp(yawErr * 0.6, -0.45, 0.45);
+          personActor.headPitch = clamp((liveHandle.y - h * 0.85) / 1400, -0.35, 0.3);
+
+          if (personActor.phaseTime >= dur) {
+            if (targetJoint) {
+              targetJoint.target = act.goal;
+              if (act.goal > 0.45) armJointAutoClose(act.id);
+              else clearJointAutoClose(act.id);
+            }
+            personActor.reachBlend = 0;
+            personActor.reachYaw = 0;
+            personActor.walkBlend = 0;
+            personActor.headYaw = 0;
+            enterWaiting();
+          }
+        } else if (act.kind === 'switch') {
+          personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
           const dur = 1.5;
           personActor.reachProgress = clamp(personActor.phaseTime / dur, 0, 1);
           personActor.reachBlend = 1;
           if (personActor.reachProgress >= .34 && !personActor.actionFired) {
             personActor.actionFired = true;
-            if (act.kind === 'joint') {
-              const targetJoint = joints.get(act.id);
-              if (targetJoint) {
-                targetJoint.target = act.goal;
-                if (act.goal > 0.45) armJointAutoClose(act.id);
-                else clearJointAutoClose(act.id);
-              }
-            }
             callbacks.onPersonAutoAction?.({
               phase: 'action',
               actionType: act.kind,
@@ -1876,9 +1989,11 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           }
           if (personActor.phaseTime >= dur) {
             personActor.reachBlend = 0;
+            personActor.reachYaw = 0;
             enterWaiting();
           }
         } else if (act.kind === 'walk') {
+          personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
           if (!personActor.actionFired) {
             personActor.actionFired = true;
             callbacks.onPersonAutoAction?.({
@@ -1890,6 +2005,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           }
           if (personActor.phaseTime >= 0.35) enterWaiting();
         } else {
+          personActor.walkBlend = Math.max(0, personActor.walkBlend - dt * 8);
           const dur = 1.8;
           personActor.inspect = clamp(personActor.phaseTime / dur, 0, 1);
           if (personActor.phaseTime >= 0.35 && !personActor.actionFired) {
@@ -2019,7 +2135,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
             staticBoxes,
             movingObstacles: movingBoxes.filter(b => b.jointId !== blockerJ.id),
             pivot: blockerJ.pivot,
-            isStandClear: makeStandClearChecker(blockerJ.id, blockerJ.current, bRes.progress)
+            isStandClear: makeStandClearChecker(blockerJ.id, blockerJ.current, bRes.progress),
+            currentProgress: blockerJ.current,
+            goal: blockerGoal,
+            currentPos: [personActor.posX, personActor.posZ]
           });
           if (blockerTarget) steps.push({ ...blockerTarget, goal: blockerGoal, isOpening: blockerGoal > 0.5 });
         }
@@ -2034,7 +2153,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
         staticBoxes,
         movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
         pivot: j.pivot,
-        isStandClear: makeStandClearChecker(j.id, j.current, needsUnblock ? goal : res.progress)
+        isStandClear: makeStandClearChecker(j.id, j.current, needsUnblock ? goal : res.progress),
+        currentProgress: j.current,
+        goal,
+        currentPos: [personActor.posX, personActor.posZ]
       });
       if (!mainTarget) return false;
       steps.push({ ...mainTarget, goal, isOpening: goal > 0.5 });
@@ -2154,10 +2276,12 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       personActor.phase = 'stopped';
       personActor.directed = false;
     } else {
-      personActor.path = planFloorPath([personActor.posX, personActor.posZ], [first.standX, first.standZ], allBoxes);
+      const destX = first.approachX ?? first.standX;
+      const destZ = first.approachZ ?? first.standZ;
+      personActor.path = planFloorPath([personActor.posX, personActor.posZ], [destX, destZ], allBoxes);
       personActor.pathIdx = 0;
-      const d0 = Math.hypot(first.standX - personActor.posX, first.standZ - personActor.posZ);
-      personActor.phase = d0 < 24 ? 'turning' : 'walking';
+      const d0 = Math.hypot(destX - personActor.posX, destZ - personActor.posZ);
+      personActor.phase = d0 < 20 ? 'turning' : 'walking';
     }
     schedule();
     return true;
@@ -2479,7 +2603,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     const d = state.dimensions, resized = !dims || dims.width !== d.width || dims.height !== d.height || dims.depth !== d.depth;
     let layout = resized || showGuides !== state.showDimensions;
     if (layout) { dims = { ...d }; showGuides = state.showDimensions; guides.set(showGuides, d); }
-    if (xrayEnabled) applyXrayState(false);
+    if (xrayEnabled || accessibilityEnabled) applyXrayState(false);
     if (accessibilityEnabled) {
       for (const part of parts) {
         clearPartAccessWire(part.visual);
@@ -2530,7 +2654,6 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (p.anchor.visible !== visible) { p.anchor.visible = visible; layout = true; }
     }
     if (xrayEnabled || accessibilityEnabled) applyXrayState(true);
-    applyAccessibilityState();
 
     let jointImmediate = false;
     for (const j of joints.values()) {
@@ -2588,9 +2711,16 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
           }
         }
       } else {
-        j.target = requested;
-        if (requested > 0.45) armJointAutoClose(j.id);
-        else clearJointAutoClose(j.id);
+        const actorDrivingJoint =
+          personActor.phase === 'acting' &&
+          personActor.currentAction?.kind === 'joint' &&
+          personActor.currentAction.id === j.id &&
+          Math.abs(requested - personActor.currentAction.goal) < 0.05;
+        if (!actorDrivingJoint) {
+          j.target = requested;
+          if (requested > 0.45) armJointAutoClose(j.id);
+          else clearJointAutoClose(j.id);
+        }
       }
     }
 
@@ -2630,13 +2760,14 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     }
     const poseOrYawChanged = !actorActive && (prior?.pose !== personState.pose || prior?.yaw !== personState.yaw);
     if (!prior || prior.visible !== personState.visible || (personState.visible &&
-      (prior.height !== personState.height || prior.build !== personState.build || prior.side !== personState.side || poseOrYawChanged))) {
+      (prior.height !== personState.height || prior.build !== personState.build || prior.character !== personState.character || prior.side !== personState.side || poseOrYawChanged))) {
       personGeometry = { ...personState };
       layout = true;
     } else if (actorActive) {
       personGeometry = { ...personState };
     }
     person.update(personState);
+    applyAccessibilityState();
     if (actorActive || personActor.hasMoved) {
       person.root.position.set(personActor.posX, 0, personActor.posZ);
       person.root.rotation.y = personActor.yaw;

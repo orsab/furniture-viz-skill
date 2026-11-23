@@ -143,11 +143,13 @@ function updateEstimatesDisplay() {
   }
 }
 
+const charLabelKey = c => (c === 'female' ? 'charFemale' : c === 'child' ? 'charChild' : 'charMale');
+
 function updateFacts() {
   const d = state.dimensions, p = state.person;
   $('envelope').textContent = `${d.width} × ${d.depth} × ${d.height} ${tr.mmUnit}`;
   $('figure-summary').textContent = p.visible
-    ? `${p.height} ${tr.mmUnit} · ${tr.t(p.pose === 'seated' ? 'poseSeated' : 'poseStanding')}`
+    ? `${tr.t(charLabelKey(p.character))} · ${p.height} ${tr.mmUnit} · ${tr.t(p.pose === 'seated' ? 'poseSeated' : 'poseStanding')}`
     : tr.t('notShown');
 }
 
@@ -833,7 +835,7 @@ function describeHover(info) {
   } else if (action.type === 'person') {
     title = tr.t('hoverPerson');
     swatchColor = state.person.top;
-    finishName = `${state.person.height} ${tr.mmUnit}`;
+    finishName = `${tr.t(charLabelKey(state.person.character))} · ${state.person.height} ${tr.mmUnit}`;
     actionText = tr.t(state.person.pose === 'standing' ? 'hoverSit' : 'hoverStand');
   } else if (action.type === 'slot') {
     if (info.accessZone) {
@@ -1114,7 +1116,8 @@ createStudio($('canvas-wrap'), spec, assets, {
         state.joints[evt.id] = evt.goal;
         personAutoStatus = { key: evt.isOpening ? 'personActOpen' : 'personActClose', label: evt.label };
         inspector?.sync();
-        paint('animate');
+        if (!evt.managed) paint('animate');
+        else updateFacts();
         showNotice(tr.t(personAutoStatus.key, { label: tr.term(evt.label) }));
       } else if (evt.actionType === 'switch') {
         state.switches[evt.id] = Boolean(evt.goal);

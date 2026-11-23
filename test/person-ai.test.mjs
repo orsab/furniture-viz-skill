@@ -10,6 +10,7 @@ import {
   isShelfLikePart,
   classifyShelfAccessibility,
   detectSeats,
+  findJointHandleTarget,
   computeInteractionTarget,
   clampPersonOutsideObstacles,
   resolveWalkStandPoint,
@@ -20,7 +21,7 @@ import { createKinematics, makePersonOBB } from '../lib/kinematics.mjs';
 import { initialState } from '../lib/state.mjs';
 import { resolveVec } from '../lib/coordinates.mjs';
 import { Box3 } from 'three';
-import { makeMannequin } from '../app/mannequin.mjs';
+import { CHARACTER_PRESETS, CHARACTER_TYPES, makeMannequin } from '../app/mannequin.mjs';
 
 function rotateXYZ([x, y, z], [rx, ry, rz]) {
   const rad = d => (d * Math.PI) / 180;
@@ -360,4 +361,160 @@ test('shelf accessibility classifies green (eye level), yellow (standing hand re
   assert.equal(shelfZones.has('green'), true, 'Wardrobe has eye-level green shelves');
   assert.equal(shelfZones.has('yellow'), true, 'Wardrobe has standing-reach yellow shelves');
   assert.equal(shelfZones.has('red'), true, 'Wardrobe has high red shelves requiring a stool');
+});
+
+test('mannequin supports male, female, and child proportions with accurate height and grounded walk', () => {
+  assert.deepEqual(CHARACTER_TYPES, ['male', 'female', 'child']);
+  const person = makeMannequin();
+  const soles = [];
+  person.root.traverse(obj => {
+    if (obj.isMesh && obj.material.color.getHex() === 0x57524d) soles.push(obj);
+  });
+  assert.equal(soles.length, 2);
+
+  const box = new Box3();
+  const widthsAtSameHeight = {};
+
+  for (const charType of CHARACTER_TYPES) {
+    const preset = CHARACTER_PRESETS[charType];
+    person.update({
+      visible: true,
+      character: charType,
+      height: preset.defaultHeight,
+      build: 'regular',
+      pose: 'standing',
+      yaw: 0,
+      skin: '#b98464',
+      hair: preset.defaultHair,
+      top: preset.defaultTop,
+      bottom: preset.defaultBottom
+    });
+    person.root.updateMatrixWorld(true);
+    box.setFromObject(person.root, true);
+    const measuredHeight = box.max.y - box.min.y;
+    assert.ok(Math.abs(box.min.y) < 3, `${charType} should stand flush on y=0 (got ${box.min.y})`);
+    assert.ok(
+      Math.abs(measuredHeight - preset.defaultHeight) <= preset.defaultHeight * 0.05,
+      `${charType} height ${measuredHeight.toFixed(1)} should match ${preset.defaultHeight} within 5%`
+    );
+
+    // Verify 60 frames of walking keep shoes on the floor for each character
+    const floorBox = new Box3();
+    for (let i = 0; i < 60; i++) {
+      person.setMotion({ walkPhase: (i * Math.PI) / 30, walkBlend: 1 });
+      person.root.updateMatrixWorld(true);
+      const minShoeY = Math.min(...soles.map(sole => floorBox.setFromObject(sole, true).min.y));
+      assert.ok(Math.abs(minShoeY) < 3, `${charType} walk frame ${i} drifted (${minShoeY})`);
+    }
+    person.setMotion(null);
+
+    // Measure width at uniform 1700 mm height to check distinct male vs female proportions
+    person.update({
+      visible: true,
+      character: charType,
+      height: 1700,
+      build: 'regular',
+      pose: 'standing',
+      yaw: 0,
+      skin: '#b98464',
+      hair: preset.defaultHair,
+      top: preset.defaultTop,
+      bottom: preset.defaultBottom
+    });
+    person.root.updateMatrixWorld(true);
+    box.setFromObject(person.root, true);
+    widthsAtSameHeight[charType] = box.max.x - box.min.x;
+  }
+
+  assert.ok(
+    widthsAtSameHeight.female < widthsAtSameHeight.male,
+    `Female shoulder span (${widthsAtSameHeight.female.toFixed(1)}) should be narrower than male (${widthsAtSameHeight.male.toFixed(1)})`
+  );
+});
+
+test('every hinged door and flap opens and closes to full unobstructed travel without crashing into any character', async () => {
+  const specs = [
+    ['private/primary-bedroom-joinery-v4.json', '../private/primary-bedroom-joinery-v4.json'],
+    ['private/primary-bedroom-joinery-v2.json', '../private/primary-bedroom-joinery-v2.json'],
+    ['examples/linea.json', '../examples/linea.json']
+  ];
+  const characters = [
+    { character: 'male', height: 1760, build: 'regular' },
+    { character: 'male', height: 1850, build: 'broad' },
+    { character: 'female', height: 1640, build: 'regular' },
+    { character: 'child', height: 1200, build: 'regular' }
+  ];
+
+  for (const [label, relPath] of specs) {
+    const spec = JSON.parse(await fs.readFile(new URL(relPath, import.meta.url), 'utf8'));
+    const kin = createKinematics(spec);
+    const st = initialState(spec);
+    kin.setDimensionsAndOptions(st.dimensions, st.options);
+    const boxes = makeBoxesFromSpec(spec);
+    const staticBoxes = boxes.filter(b => !b.jointId);
+    const movingBoxes = boxes.filter(b => b.jointId);
+
+    for (const j of spec.joints) {
+      if (j.type !== 'hinge' && j.type !== 'flap') continue;
+      const tBoxes = movingBoxes.filter(b => b.jointId === j.id);
+      const pivot = resolveVec(j.pivot, st.dimensions);
+
+      // Handle detection must target the pull/handle rather than hinge knuckles
+      const handleAim = findJointHandleTarget(tBoxes, pivot, j);
+      assert.ok(handleAim, `${label}:${j.id} must resolve a handle aim target`);
+      const pullPart = tBoxes.find(b => /pull|knob|handle|flap/i.test(b.id));
+      if (pullPart) {
+        const px = (pullPart.minX + pullPart.maxX) * 0.5;
+        const pz = (pullPart.minZ + pullPart.maxZ) * 0.5;
+        assert.ok(
+          Math.hypot(handleAim.cx - px, handleAim.cz - pz) < 40,
+          `${label}:${j.id} should aim at pull (${px}, ${pz}), got (${handleAim.cx}, ${handleAim.cz})`
+        );
+      }
+
+      const freeOpen = kin.resolveJointMotion(j.id, 0, 1, st.joints, { ignorePerson: true });
+      for (const cfg of characters) {
+        const target = computeInteractionTarget({
+          kind: 'joint',
+          id: j.id,
+          label: j.label,
+          def: j,
+          targetBoxes: tBoxes,
+          staticBoxes,
+          movingObstacles: movingBoxes.filter(b => b.jointId !== j.id),
+          pivot,
+          currentProgress: 0,
+          goal: 1,
+          isStandClear: (sx, sz, yaw) => kin.isPersonClearOfJointSweep(
+            j.id,
+            0,
+            freeOpen.progress,
+            st.joints,
+            makePersonOBB({ x: sx, z: sz, yaw, ...cfg, seated: false }),
+            { pad: 65 }
+          )
+        });
+        assert.ok(target, `${label}:${j.id} target missing for ${cfg.character}`);
+        const obb = makePersonOBB({ x: target.standX, z: target.standZ, yaw: target.faceYaw, ...cfg, seated: false });
+        kin.setPersonObstacle(obb);
+        const withPersonOpen = kin.resolveJointMotion(j.id, 0, 1, st.joints);
+        kin.setPersonObstacle(null);
+        assert.ok(
+          withPersonOpen.progress >= freeOpen.progress - 0.01 && !withPersonOpen.blocker?.isPerson,
+          `${label}:${j.id} (${cfg.character} ${cfg.build}) crashed into person at [${Math.round(target.standX)}, ${Math.round(target.standZ)}]: open=${withPersonOpen.progress} vs free=${freeOpen.progress}`
+        );
+
+        // Verify closing back from open -> 0 also stays clear of the person
+        const closePosMap = { ...st.joints, [j.id]: freeOpen.progress };
+        const freeClose = kin.resolveJointMotion(j.id, freeOpen.progress, 0, closePosMap, { ignorePerson: true });
+        kin.setPersonObstacle(obb);
+        const withPersonClose = kin.resolveJointMotion(j.id, freeOpen.progress, 0, closePosMap);
+        kin.setPersonObstacle(null);
+        assert.ok(
+          withPersonClose.progress <= freeClose.progress + 0.01 && !withPersonClose.blocker?.isPerson,
+          `${label}:${j.id} close (${cfg.character}) crashed into person: close=${withPersonClose.progress} vs free=${freeClose.progress}`
+        );
+      }
+    }
+  }
 });

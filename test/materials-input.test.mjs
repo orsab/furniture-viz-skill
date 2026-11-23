@@ -8,8 +8,12 @@ import { promisify } from 'node:util';
 import {
   applyMaterialsToSpec,
   extractPaletteFromRgba,
-  parseMaterialsFromText
+  normalizeSurface,
+  parseMaterialsFromText,
+  SURFACE_TYPES
 } from '../lib/materials-parse.mjs';
+import { SURFACE_PROPS } from '../app/materials.mjs';
+import { STRINGS } from '../app/i18n.mjs';
 import { decodeImageToRgba } from '../lib/png-decode.mjs';
 import { validateSpec } from '../lib/spec.mjs';
 
@@ -107,4 +111,52 @@ test('tools/materials.mjs CLI extracts sketch + text finishes and updates a draf
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('supports marble, brick, concrete, stone, terrazzo, tile, leather, and glass surfaces end-to-end', async () => {
+  const schema = JSON.parse(await fs.readFile(new URL('../lib/schema.json', import.meta.url), 'utf8'));
+  const schemaSurfaces = schema.$defs.finish.properties.surface.enum;
+  assert.deepEqual([...SURFACE_TYPES].sort(), [...schemaSurfaces].sort());
+
+  for (const s of SURFACE_TYPES) {
+    assert.ok(Object.hasOwn(SURFACE_PROPS, s), `Missing SURFACE_PROPS entry for ${s}`);
+    const cap = s[0].toUpperCase() + s.slice(1);
+    const key = `surface${cap}`;
+    assert.ok(STRINGS.he[key], `Missing Hebrew translation STRINGS.he.${key}`);
+    assert.ok(STRINGS.en[key], `Missing English translation STRINGS.en.${key}`);
+  }
+
+  assert.equal(normalizeSurface('bricks'), 'brick');
+  assert.equal(normalizeSurface('tiles'), 'tile');
+  assert.equal(normalizeSurface('MARBLE'), 'marble');
+
+  const enParsed = parseMaterialsFromText(
+    'Carrara marble, Red clay brick, Microcement concrete, Warm travertine stone, Light terrazzo, Subway ceramic tile, Cognac leather, Smoked glass'
+  );
+  assert.deepEqual(
+    enParsed.map(m => m.surface),
+    ['marble', 'brick', 'concrete', 'stone', 'terrazzo', 'tile', 'leather', 'glass']
+  );
+
+  const heParsed = parseMaterialsFromText(
+    'שיש קרארה, לבנים אדומות, בטון מוחלק, אבן טרוורטין, טראצו בהיר, אריחי קרמיקה, עור קוניאק, זכוכית מעושנת'
+  );
+  assert.deepEqual(
+    heParsed.map(m => m.surface),
+    ['marble', 'brick', 'concrete', 'stone', 'terrazzo', 'tile', 'leather', 'glass']
+  );
+
+  // Regression guards for ambiguous Hebrew/English tokens
+  assert.deepEqual(
+    parseMaterialsFromText('לכה לבנה, Mirror glass, זכוכית מראה, Slate blue-grey').map(m => m.surface),
+    ['paint', 'metal', 'metal', 'paint']
+  );
+
+  const linea = JSON.parse(await fs.readFile(new URL('../examples/linea.json', import.meta.url), 'utf8'));
+  const { spec: updated } = applyMaterialsToSpec(linea, enParsed, {
+    targetSlot: 'case',
+    source: 'architectural-materials.txt',
+    status: 'stated'
+  });
+  validateSpec(updated, { forExport: true });
 });

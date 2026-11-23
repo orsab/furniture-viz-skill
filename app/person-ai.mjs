@@ -12,7 +12,7 @@ const SHELF_ID_RE = /shelf|מדף/i;
 const NON_SHELF_ID_RE = /(?:^|[-_])(top|base|bottom|plinth|ceiling|roof|back|side|divider|door|front|pull|knob|handle|rail|rod|wall|face|bed|strip|led|plate|toggle|sink|basin|tap|faucet|mirror|frame|leg|foot|post|apron|skirt)(?:$|[-_])/i;
 
 export function computePersonReachZones(personHeight = 1700) {
-  const h = Math.max(900, Math.min(2400, Number(personHeight) || 1700));
+  const h = Math.max(800, Math.min(2400, Number(personHeight) || 1700));
   // Anthropometric proportions relative to standing stature H:
   // - Eye height: ~0.936 * H (e.g. 1591 mm at H = 1700 mm)
   // - Comfortable standing eye/chest shelf zone (green): waist/elbow (~0.50 * H) to eye level + 3% (~0.965 * H)
@@ -258,6 +258,56 @@ export function clampPersonOutsideObstacles(x, z, boxes = [], personRadius = 185
   return { x: sx, z: sz };
 }
 
+const HINGE_PART_RE = /hinge|pivot|knuckle|ציר/i;
+const HANDLE_PART_RE = /pull|handle|knob|grip|latch|ידית|כפתור/i;
+
+export function findJointHandleTarget(targetBoxes, pivot = null, def = null) {
+  if (!targetBoxes?.length) return null;
+  const nonHinge = targetBoxes.filter(b => !HINGE_PART_RE.test(b.id || ''));
+  const pool = nonHinge.length ? nonHinge : targetBoxes;
+
+  let hw = pool.filter(b => HANDLE_PART_RE.test(b.id || ''));
+  if (!hw.length) {
+    hw = pool.filter(b => {
+      if (b.slotId === 'hardware') return true;
+      const dims = [b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ].sort((a, b2) => a - b2);
+      return dims[0] <= 45 && dims[1] <= 80 && dims[2] <= 750;
+    });
+  }
+
+  if (hw.length) {
+    if (hw.length > 1 && def?.type === 'hinge' && Array.isArray(pivot)) {
+      let best = hw[0];
+      let bestDist = -1;
+      for (const h of hw) {
+        const d = Math.hypot((h.minX + h.maxX) * 0.5 - pivot[0], (h.minZ + h.maxZ) * 0.5 - pivot[2]);
+        if (d > bestDist) {
+          bestDist = d;
+          best = h;
+        }
+      }
+      return unionBoxes([best]);
+    }
+    return unionBoxes(hw);
+  }
+
+  const overall = unionBoxes(pool);
+  if (def?.type === 'hinge' && Array.isArray(pivot)) {
+    const cxX = overall.sx >= overall.sz
+      ? (Math.abs(overall.maxX - pivot[0]) >= Math.abs(overall.minX - pivot[0])
+          ? overall.maxX - Math.min(50, overall.sx * 0.12)
+          : overall.minX + Math.min(50, overall.sx * 0.12))
+      : overall.cx;
+    const cxZ = overall.sz > overall.sx
+      ? (Math.abs(overall.maxZ - pivot[2]) >= Math.abs(overall.minZ - pivot[2])
+          ? overall.maxZ - Math.min(50, overall.sz * 0.12)
+          : overall.minZ + Math.min(50, overall.sz * 0.12))
+      : overall.cz;
+    return { ...overall, cx: cxX, cy: clamp(overall.cy, 880, 1180), cz: cxZ };
+  }
+  return overall;
+}
+
 export function computeInteractionTarget({
   kind,
   id,
@@ -267,12 +317,17 @@ export function computeInteractionTarget({
   staticBoxes = [],
   movingObstacles = [],
   pivot = null,
-  isStandClear = null
+  isStandClear = null,
+  currentProgress = 0,
+  goal = 1,
+  currentPos = null
 }) {
   if (!targetBoxes?.length) return null;
-  const overall = unionBoxes(targetBoxes);
-  const hw = targetBoxes.filter(b => b.slotId === 'hardware' || Math.max(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) <= 220);
-  const aim = hw.length ? unionBoxes(hw) : overall;
+  const nonHinge = targetBoxes.filter(b => !HINGE_PART_RE.test(b.id || ''));
+  const overall = unionBoxes(nonHinge.length ? nonHinge : targetBoxes);
+  const aim = kind === 'joint'
+    ? findJointHandleTarget(targetBoxes, pivot, def)
+    : unionBoxes(targetBoxes);
 
   const tx = aim.cx;
   const ty = aim.cy;
@@ -289,6 +344,7 @@ export function computeInteractionTarget({
   };
 
   let nx = 0, nz = 1;
+  let latX = 0, latZ = 0;
   if (kind === 'joint' && def) {
     if (def.type === 'slide') {
       nx = 0;
@@ -296,10 +352,27 @@ export function computeInteractionTarget({
     } else if (def.type === 'slide-x') {
       nx = Math.sign(def.travel) || 1;
       nz = 0;
-    } else if (def.type === 'flap') {
-      const dirs = overall.sz <= overall.sx ? [[0, 1], [0, -1]] : [[1, 0], [-1, 0]];
-      [nx, nz] = pickClearDir(dirs);
-    } else if (def.type === 'hinge') {
+    } else if (def.type === 'hinge' && Array.isArray(pivot)) {
+      const px = tx - pivot[0];
+      const pz = tz - pivot[2];
+      const plen = Math.hypot(px, pz);
+      if (plen > 20) {
+        latX = px / plen;
+        latZ = pz / plen;
+        const dirSign = Math.sign(def.travel) || 1;
+        const openX = (pz * dirSign) / plen;
+        const openZ = (-px * dirSign) / plen;
+        if (goal < currentProgress && currentProgress > 0.35) {
+          [nx, nz] = pickClearDir([[openX, openZ], [-openX, -openZ], [latX, latZ]]);
+        } else {
+          nx = openX;
+          nz = openZ;
+        }
+      } else {
+        const dirs = overall.sz <= overall.sx ? [[0, 1], [0, -1]] : [[1, 0], [-1, 0]];
+        [nx, nz] = pickClearDir(dirs);
+      }
+    } else if (def.type === 'flap' || def.type === 'hinge') {
       const dirs = overall.sz <= overall.sx ? [[0, 1], [0, -1]] : [[1, 0], [-1, 0]];
       [nx, nz] = pickClearDir(dirs);
     } else {
@@ -311,34 +384,67 @@ export function computeInteractionTarget({
 
   // Include targetBoxes in obs so stand candidates never land inside an already-open door or drawer leaf.
   const obs = buildWalkObstacles([...(staticBoxes || []), ...(movingObstacles || []), ...targetBoxes], 220);
-  let latX = 0, latZ = 0;
-  if (Math.abs(nz) > 0.5) {
-    latX = Array.isArray(pivot) ? (Math.sign(tx - pivot[0]) || 1) : 1;
-  } else {
-    latZ = Array.isArray(pivot) ? (Math.sign(tz - pivot[2]) || 1) : 1;
+  if (latX === 0 && latZ === 0) {
+    if (Math.abs(nz) > 0.5) {
+      latX = Array.isArray(pivot) ? (Math.sign(tx - pivot[0]) || 1) : 1;
+    } else {
+      latZ = Array.isArray(pivot) ? (Math.sign(tz - pivot[2]) || 1) : 1;
+    }
   }
 
   const candidatesXZ = [];
   if (kind === 'joint' && def?.type === 'hinge') {
-    const leafSpan = Math.max(overall.sx, overall.sz);
-    candidatesXZ.push(
-      [tx + nx * 520 + latX * 260, tz + nz * 520 + latZ * 260],
-      [tx + nx * 680 + latX * 320, tz + nz * 680 + latZ * 320],
-      [tx + nx * 820 + latX * 280, tz + nz * 820 + latZ * 280],
-      [tx + nx * Math.max(660, leafSpan + 280), tz + nz * Math.max(660, leafSpan + 280)],
-      [tx + nx * 680 - latX * 300, tz + nz * 680 - latZ * 300],
-      [tx + nx * Math.max(850, leafSpan + 380), tz + nz * Math.max(850, leafSpan + 380)],
-      [overall.cx + nx * 560, overall.cz + nz * 560],
-      [overall.cx - nx * 560, overall.cz - nz * 560]
+    const leafSpan = Math.max(
+      overall.sx,
+      overall.sz,
+      Array.isArray(pivot) ? Math.hypot(tx - pivot[0], tz - pivot[2]) + 40 : 0
     );
+    if (goal < currentProgress && Array.isArray(currentPos)) {
+      const dCur = Math.hypot(currentPos[0] - tx, currentPos[1] - tz);
+      if (dCur <= Math.max(920, leafSpan + 420)) {
+        candidatesXZ.push([currentPos[0], currentPos[1]]);
+      }
+    }
+    // Natural latch-side positions near the handle yet clear of the swing arc
+    candidatesXZ.push(
+      [tx + nx * 420 + latX * 300, tz + nz * 420 + latZ * 300],
+      [tx + nx * 460 + latX * 360, tz + nz * 460 + latZ * 360],
+      [tx + nx * 520 + latX * 420, tz + nz * 520 + latZ * 420],
+      [tx + nx * 380 + latX * 440, tz + nz * 380 + latZ * 440],
+      [tx + nx * 580 + latX * 340, tz + nz * 580 + latZ * 340],
+      [tx + nx * 640 + latX * 440, tz + nz * 640 + latZ * 440],
+      // Step-back zones clearly outside full door swing radius
+      [tx + nx * Math.max(660, leafSpan + 320), tz + nz * Math.max(660, leafSpan + 320)],
+      [tx + nx * Math.max(760, leafSpan + 420) + latX * 220, tz + nz * Math.max(760, leafSpan + 420) + latZ * 220],
+      [tx + nx * Math.max(760, leafSpan + 420) - latX * 220, tz + nz * Math.max(760, leafSpan + 420) - latZ * 220],
+      [tx + nx * Math.max(900, leafSpan + 540), tz + nz * Math.max(900, leafSpan + 540)]
+    );
+    if (goal < currentProgress && currentProgress > 0.35) {
+      candidatesXZ.push(
+        [tx - nx * 480 + latX * 320, tz - nz * 480 + latZ * 320],
+        [tx - nx * 580 + latX * 380, tz - nz * 580 + latZ * 380]
+      );
+    }
+    // Polar arc fallback around pivot so tight corners still yield a sweep-clear stand point
+    const baseAng = Math.atan2(nx, nz);
+    const pivotX = Array.isArray(pivot) ? pivot[0] : tx;
+    const pivotZ = Array.isArray(pivot) ? pivot[2] : tz;
+    for (const r of [leafSpan + 340, leafSpan + 480, leafSpan + 640]) {
+      for (const deg of [0, 22, -22, 44, -44, 65, -65]) {
+        const ang = baseAng + (deg * Math.PI) / 180;
+        candidatesXZ.push([pivotX + Math.sin(ang) * r, pivotZ + Math.cos(ang) * r]);
+      }
+    }
   } else if (kind === 'joint' && (def?.type === 'slide' || def?.type === 'slide-x')) {
     const pullDist = Math.abs(def.travel) + 340;
     const perpX = -nz, perpZ = nx;
     candidatesXZ.push(
-      [tx + nx * (pullDist * 0.78) + perpX * 220, tz + nz * (pullDist * 0.78) + perpZ * 220],
-      [tx + nx * (pullDist * 0.78) - perpX * 220, tz + nz * (pullDist * 0.78) - perpZ * 220],
+      [tx + nx * (pullDist * 0.78) + perpX * 240, tz + nz * (pullDist * 0.78) + perpZ * 240],
+      [tx + nx * (pullDist * 0.78) - perpX * 240, tz + nz * (pullDist * 0.78) - perpZ * 240],
       [tx + nx * pullDist, tz + nz * pullDist],
-      [tx + nx * (pullDist + 180), tz + nz * (pullDist + 180)]
+      [tx + nx * (pullDist + 220), tz + nz * (pullDist + 220)],
+      [tx + nx * (pullDist + 360) + perpX * 280, tz + nz * (pullDist + 360) + perpZ * 280],
+      [tx + nx * (pullDist + 360) - perpX * 280, tz + nz * (pullDist + 360) - perpZ * 280]
     );
   } else if (kind === 'joint' && def?.type === 'flap') {
     const perpX = -nz, perpZ = nx;
@@ -346,7 +452,8 @@ export function computeInteractionTarget({
       [tx + nx * 680, tz + nz * 680],
       [tx + nx * 580 + perpX * 260, tz + nz * 580 + perpZ * 260],
       [tx + nx * 580 - perpX * 260, tz + nz * 580 - perpZ * 260],
-      [tx + nx * 860, tz + nz * 860]
+      [tx + nx * 860, tz + nz * 860],
+      [tx + nx * 1020 + perpX * 220, tz + nz * 1020 + perpZ * 220]
     );
   } else {
     const baseDist = kind === 'switch' ? 460 : 560;
@@ -388,9 +495,28 @@ export function computeInteractionTarget({
   }
 
   const [standX, standZ] = chosen;
+  let approachX = null;
+  let approachZ = null;
+  if (kind === 'joint' && def?.type === 'hinge' && goal > currentProgress && Math.hypot(tx - standX, tz - standZ) > 680) {
+    const stepObs = buildWalkObstacles([...(staticBoxes || []), ...(movingObstacles || [])], 165);
+    const probes = [
+      [tx + nx * 440 + latX * 140, tz + nz * 440 + latZ * 140],
+      [tx + nx * 460, tz + nz * 460],
+      [tx + nx * 500 + latX * 180, tz + nz * 500 + latZ * 180]
+    ];
+    for (const [ax, az] of probes) {
+      if (pointInsideAny(ax, az, obs, 4)) continue;
+      if (!segmentBlocked([ax, az], [standX, standZ], stepObs)) {
+        approachX = ax;
+        approachZ = az;
+        break;
+      }
+    }
+  }
+
   const faceYaw = Math.atan2(tx - standX, tz - standZ);
   const reachY = clamp(ty, 450, 1650);
-  return { kind, id, label, tx, ty, tz, standX, standZ, faceYaw, nx, nz, reachY };
+  return { kind, id, label, tx, ty, tz, standX, standZ, approachX, approachZ, faceYaw, nx, nz, latX, latZ, reachY };
 }
 
 function segmentIntersectsRect(x1, z1, x2, z2, r) {

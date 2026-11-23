@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util';
 import {
   applyMaterialsToSpec,
   extractPaletteFromRgba,
+  normalizeSurface,
   parseMaterialsFromText
 } from '../lib/materials-parse.mjs';
 import { decodeImageToRgba } from '../lib/png-decode.mjs';
@@ -19,7 +20,7 @@ Options:
   --text <text>         Inline English/Hebrew material list (supports "Slot: mat1, mat2")
   --text-file <path>    UTF-8 text/markdown brief containing material names
   --sketch <path>       Sketch or finish-board image (.png, .jpg, .jpeg, .webp), repeatable
-  --surface <kind>      Default surface for extracted sketch colors: wood|fabric|metal|paint (default: paint)
+  --surface <kind>      Default surface for sketch colors: wood|fabric|metal|paint|marble|brick|concrete|stone|terrazzo|tile|leather|glass (default: paint)
   --max <N>             Maximum colors extracted per sketch image (1-12, default: 6)
   --lang <he|en>        Fallback swatch labels for sketch colors (default: en)
   --spec <draft.json>   Existing draft spec to enrich with selectable finishes
@@ -105,7 +106,7 @@ async function main() {
     const { rgba, width, height } = await decodeImageToRgba(sketchPath);
     const palette = extractPaletteFromRgba(rgba, width, height, {
       maxColors,
-      surface: values.surface,
+      surface: normalizeSurface(values.surface, 'paint'),
       lang
     });
     for (const item of palette) {

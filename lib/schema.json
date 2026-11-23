@@ -22,7 +22,7 @@
     "vec": {"type":"array","minItems":3,"maxItems":3,"items":{"$ref":"#/$defs/coord"}},
     "angles": {"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":-360,"maximum":360}},
     "refOrNull": {"anyOf":[{"$ref":"#/$defs/id"},{"type":"null"}]},
-    "finish": {"type":"object","additionalProperties":false,"required":["name","color","surface"],"properties":{"name":{"$ref":"#/$defs/label"},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"surface":{"type":"string","enum":["wood","fabric","metal","paint"]}}},
+    "finish": {"type":"object","additionalProperties":false,"required":["name","color","surface"],"properties":{"name":{"$ref":"#/$defs/label"},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"surface":{"type":"string","enum":["wood","fabric","metal","paint","marble","brick","concrete","stone","terrazzo","tile","leather","glass"]}}},
     "slot": {"type":"object","additionalProperties":false,"required":["id","label","finishes"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"finishes":{"type":"array","minItems":1,"maxItems":64,"items":{"$ref":"#/$defs/finish"}}}},
     "option": {"type":"object","additionalProperties":false,"required":["id","label","choices"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"choices":{"type":"array","minItems":2,"maxItems":32,"items":{"$ref":"#/$defs/label"}}}},
     "joint": {"type":"object","additionalProperties":false,"required":["id","label","type","pivot","travel"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"$ref":"#/$defs/label"},"type":{"type":"string","enum":["hinge","slide","flap","slide-x","lift"]},"pivot":{"$ref":"#/$defs/vec"},"travel":{"type":"number","minimum":-20000,"maximum":20000}}},

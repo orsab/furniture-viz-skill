@@ -279,4 +279,11 @@ test('person 3D collision OBB stops opening door upon contact and clears outside
   assert.equal(clearRes.blocked, false);
   assert.equal(clearRes.progress, 1);
   assert.equal(kin.isPersonClearOfJointSweep('door', 0, 1, { door: 0, drawer: 0 }, clearOBB), true);
+
+  // Dense sweep check with safety pad catches a thin 18mm door swinging 165 deg past a close bystander
+  const wardrobeV4 = JSON.parse(await readFile(new URL('../private/primary-bedroom-joinery-v4.json', import.meta.url), 'utf8'));
+  const kinW = createKinematics(wardrobeV4);
+  kinW.setDimensionsAndOptions({ width: 4250, height: 2740, depth: 1810 }, { 'preview-scene': 'Joinery only' });
+  const closeMidArc = makePersonOBB({ x: -120, z: 320, yaw: Math.PI, height: 1760, build: 'regular', character: 'male', seated: false });
+  assert.equal(kinW.isPersonClearOfJointSweep('b-door-2', 0, 1, { 'b-door-2': 0 }, closeMidArc, { pad: 65 }), false);
 });
