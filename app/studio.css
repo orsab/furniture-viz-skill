@@ -966,6 +966,7 @@ input[type=text] {
   direction: ltr;
 }
 
+.joint-toggle,
 .chip-button {
   min-height: 34px;
   padding: 4px 10px;
@@ -975,6 +976,7 @@ input[type=text] {
 .joint-bulk {
   display: flex;
   gap: 6px;
+  margin-bottom: 12px;
 }
 
 .switch-group {
@@ -1606,6 +1608,42 @@ input[type=text] {
   flex: none;
 }
 
+.person-access-card {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f7f2;
+}
+
+.person-access-hint {
+  margin: 4px 0 8px;
+}
+
+.access-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: .77rem;
+  line-height: 1.35;
+}
+
+.access-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.access-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  flex-shrink: 0;
+}
+
 .context-menu {
   position: absolute;
   top: 0;
@@ -1621,9 +1659,11 @@ input[type=text] {
   display: grid;
   gap: 2px;
 }
+
 .context-menu[hidden] {
   display: none;
 }
+
 .ctx-head {
   padding: 5px 10px 6px;
   font-size: .72rem;
@@ -1632,6 +1672,7 @@ input[type=text] {
   border-bottom: 1px solid var(--line);
   margin-bottom: 3px;
 }
+
 .ctx-item {
   width: 100%;
   min-height: 34px;
@@ -1645,19 +1686,23 @@ input[type=text] {
   text-align: start;
   cursor: pointer;
 }
+
 .ctx-item:hover,
 .ctx-item:focus-visible {
   background: var(--bg);
 }
+
 .ctx-item.ctx-primary {
   font-weight: 600;
   color: var(--green);
 }
+
 @media (forced-colors: active) {
   .context-menu {
     border: 1px solid CanvasText;
   }
 }
+
 @media (max-width: 720px) {
 
   .ss-grid,

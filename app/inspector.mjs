@@ -1,5 +1,6 @@
 import { axes } from '../lib/coordinates.mjs';
 import { extractPaletteFromRgba, parseMaterialsFromText } from '../lib/materials-parse.mjs';
+import { REACH_ZONE_COLORS, computePersonReachZones } from './person-ai.mjs';
 
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -560,6 +561,45 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
     ref.append(autoCard);
     syncers.push(syncAuto);
     syncAuto();
+
+    const accessCard = el('div', 'person-access-card');
+    const accessToggleRow = toggle(accessCard, tr.t('accessCardTitle'), Boolean(personCtrl.isAccessEnabled?.()), v => {
+      personCtrl.onToggleAccess?.(v);
+    });
+    const accessHint = el('p', 'hint person-access-hint');
+    const legendList = el('ul', 'access-legend');
+    const liGreen = el('li', 'access-legend-item');
+    const dotGreen = el('span', 'access-dot');
+    dotGreen.style.backgroundColor = REACH_ZONE_COLORS.green;
+    const txtGreen = el('span');
+    liGreen.append(dotGreen, txtGreen);
+
+    const liYellow = el('li', 'access-legend-item');
+    const dotYellow = el('span', 'access-dot');
+    dotYellow.style.backgroundColor = REACH_ZONE_COLORS.yellow;
+    const txtYellow = el('span');
+    liYellow.append(dotYellow, txtYellow);
+
+    const liRed = el('li', 'access-legend-item');
+    const dotRed = el('span', 'access-dot');
+    dotRed.style.backgroundColor = REACH_ZONE_COLORS.red;
+    const txtRed = el('span');
+    liRed.append(dotRed, txtRed);
+
+    legendList.append(liGreen, liYellow, liRed);
+    accessCard.append(accessHint, legendList);
+    ref.append(accessCard);
+
+    const syncAccessCard = () => {
+      accessToggleRow.checked = Boolean(personCtrl.isAccessEnabled?.());
+      const zones = computePersonReachZones(p.height);
+      accessHint.textContent = tr.t('accessCardHint', { height: zones.personHeight });
+      txtGreen.textContent = tr.t('accessZoneGreen', { min: zones.eyeZoneMin, max: zones.eyeZoneMax });
+      txtYellow.textContent = tr.t('accessZoneYellow', { max: zones.handReachMax });
+      txtRed.textContent = tr.t('accessZoneRed', { max: zones.handReachMax });
+    };
+    syncers.push(syncAccessCard);
+    syncAccessCard();
   }
 
   const figure = el('fieldset', 'unboxed figure-settings');
@@ -568,6 +608,7 @@ export function mountInspector(furniture, person, spec, state, onChange, tr, pre
   const { body } = section(figure, 'person-pose', tr.t('sizeAndPose'), true, openSet);
   const statureCtrl = measure(body, tr.t('standingStature'), tr.mmUnit, p.height, 900, 2200, v => {
     p.height = v;
+    for (const fn of syncers) fn();
     onChange('immediate');
   }, tr);
   syncers.push(() => statureCtrl.setVal(p.height));

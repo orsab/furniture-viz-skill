@@ -5,6 +5,10 @@ import {
   DEFAULT_ACTION_DELAY_MS,
   AUTO_CLOSE_HOLD_SEC,
   JOINT_AUTO_CLOSE_SEC,
+  REACH_ZONE_COLORS,
+  computePersonReachZones,
+  isShelfLikePart,
+  classifyShelfAccessibility,
   detectSeats,
   computeInteractionTarget,
   clampPersonOutsideObstacles,
@@ -312,4 +316,48 @@ test('planFloorPath never walks through open doors even on 230+ part models or w
   const stillInside = clamped.x > openDoorBox.minX - 160 && clamped.x < openDoorBox.maxX + 160 &&
                       clamped.z > openDoorBox.minZ - 160 && clamped.z < openDoorBox.maxZ + 160;
   assert.equal(stillInside, false, 'clampPersonOutsideObstacles must push person clear of open door');
+});
+
+test('shelf accessibility classifies green (eye level), yellow (standing hand reach), and red (stool needed) proportionally to person height', async () => {
+  const zones1700 = computePersonReachZones(1700);
+  assert.equal(zones1700.eyeHeight, 1591);
+  assert.equal(zones1700.eyeZoneMin, 850);
+  assert.equal(zones1700.eyeZoneMax, 1641);
+  assert.equal(zones1700.handReachMax, 2040);
+
+  // At 1700 mm stature:
+  // 1450 mm shelf -> green (eye level zone)
+  const eyeShelf = classifyShelfAccessibility(1450, 1700);
+  assert.equal(eyeShelf.zone, 'green');
+  assert.equal(eyeShelf.color, REACH_ZONE_COLORS.green);
+
+  // 1950 mm shelf -> yellow (standing hand reach)
+  const reachShelf = classifyShelfAccessibility(1950, 1700);
+  assert.equal(reachShelf.zone, 'yellow');
+  assert.equal(reachShelf.color, REACH_ZONE_COLORS.yellow);
+
+  // 2350 mm high wardrobe shelf -> red (stool needed)
+  const highShelf = classifyShelfAccessibility(2350, 1700);
+  assert.equal(highShelf.zone, 'red');
+  assert.equal(highShelf.color, REACH_ZONE_COLORS.red);
+
+  // Proportional scaling: for a shorter person (1400 mm), 1950 mm becomes red (stool needed)
+  const highForShortPerson = classifyShelfAccessibility(1950, 1400);
+  assert.equal(highForShortPerson.zone, 'red');
+
+  // Verify shelf detection on primary-bedroom-joinery-v2.json identifies shelves across all three zones
+  const wardrobe = JSON.parse(await fs.readFile(new URL('../private/primary-bedroom-joinery-v2.json', import.meta.url), 'utf8'));
+  const dims = Object.fromEntries(Object.entries(wardrobe.dimensions).map(([k, v]) => [k, v.value]));
+  const shelfZones = new Set();
+  for (const part of wardrobe.parts) {
+    const size = resolveVec(part.size, dims);
+    const center = resolveVec(part.center, dims);
+    if (isShelfLikePart(part, size, dims.height)) {
+      const topY = center[1] + size[1] * 0.5;
+      shelfZones.add(classifyShelfAccessibility(topY, 1700).zone);
+    }
+  }
+  assert.equal(shelfZones.has('green'), true, 'Wardrobe has eye-level green shelves');
+  assert.equal(shelfZones.has('yellow'), true, 'Wardrobe has standing-reach yellow shelves');
+  assert.equal(shelfZones.has('red'), true, 'Wardrobe has high red shelves requiring a stool');
 });

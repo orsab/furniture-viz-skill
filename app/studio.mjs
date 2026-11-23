@@ -14,6 +14,10 @@ import {
   DEFAULT_ACTION_DELAY_MS,
   AUTO_CLOSE_HOLD_SEC,
   JOINT_AUTO_CLOSE_SEC,
+  REACH_ZONE_COLORS,
+  computePersonReachZones,
+  isShelfLikePart,
+  classifyShelfAccessibility,
   detectSeats,
   computeInteractionTarget,
   clampPersonOutsideObstacles,
@@ -697,6 +701,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
 
   let aoEnabled = true;
   let xrayEnabled = false;
+  let accessibilityEnabled = false;
   let ledTempId = '3500';
   let backdropMode = 'studio';
   let composer = null, renderPass = null, gtaoPass = null, outputPass = null;
@@ -806,7 +811,10 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       ledColor: null,
       ledIntensity: 0,
       hovered: false,
-      contactFlash: 0
+      contactFlash: 0,
+      isShelf: false,
+      accessZone: null,
+      accessHeightMm: 0
     };
     partMap.set(def.id, part);
 
@@ -997,6 +1005,81 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
   const isXrayFront = part => part?.joint?.def.type === 'hinge' || part?.joint?.def.type === 'flap';
   const hasXrayTargets = parts.some(isXrayFront);
   const xrayWireMat = new T.LineBasicMaterial({ color: 0x3b4d42, transparent: true, opacity: 0.42, depthWrite: false });
+  const accessMats = {
+    green: new T.MeshPhysicalMaterial({
+      color: REACH_ZONE_COLORS.green,
+      emissive: new T.Color(REACH_ZONE_COLORS.green),
+      emissiveIntensity: 0.24,
+      roughness: 0.48,
+      metalness: 0.04
+    }),
+    yellow: new T.MeshPhysicalMaterial({
+      color: REACH_ZONE_COLORS.yellow,
+      emissive: new T.Color(REACH_ZONE_COLORS.yellow),
+      emissiveIntensity: 0.24,
+      roughness: 0.48,
+      metalness: 0.04
+    }),
+    red: new T.MeshPhysicalMaterial({
+      color: REACH_ZONE_COLORS.red,
+      emissive: new T.Color(REACH_ZONE_COLORS.red),
+      emissiveIntensity: 0.26,
+      roughness: 0.48,
+      metalness: 0.04
+    })
+  };
+  const accessEdgeMats = {
+    green: new T.LineBasicMaterial({ color: 0x165934, transparent: true, opacity: 0.85 }),
+    yellow: new T.LineBasicMaterial({ color: 0x7c5308, transparent: true, opacity: 0.85 }),
+    red: new T.LineBasicMaterial({ color: 0x7a1b12, transparent: true, opacity: 0.85 })
+  };
+
+  function clearPartAccessWire(visual) {
+    visual.traverse(obj => {
+      for (let i = obj.children.length - 1; i >= 0; i--) {
+        const child = obj.children[i];
+        if (child.userData?.isAccessWire) {
+          obj.remove(child);
+          child.geometry.dispose();
+        }
+      }
+    });
+  }
+
+  function applyAccessibilityState() {
+    const personH = personGeometry?.height || 1700;
+    const encH = dims?.height || 0;
+    for (const part of parts) {
+      part.isShelf = isShelfLikePart(part.def, part.size, encH);
+      clearPartAccessWire(part.visual);
+      if (part.isShelf) {
+        const topY = (part.closedCenter?.[1] ?? 0) + (part.size?.[1] ?? 0) * 0.5;
+        const info = classifyShelfAccessibility(topY, personH);
+        part.accessZone = info.zone;
+        part.accessHeightMm = info.shelfHeight;
+      } else {
+        part.accessZone = null;
+        part.accessHeightMm = 0;
+      }
+      part.visual.traverse(obj => {
+        if (!obj.isMesh) return;
+        if (accessibilityEnabled && part.isShelf && part.accessZone) {
+          if (!obj.userData.origAccessMat) obj.userData.origAccessMat = obj.material;
+          obj.material = accessMats[part.accessZone] || obj.userData.origAccessMat;
+          if ((part.def.shape === 'box' || part.def.shape === 'cylinder') && obj.geometry?.attributes?.position?.count) {
+            const edges = new T.EdgesGeometry(obj.geometry, 28);
+            const lines = new T.LineSegments(edges, accessEdgeMats[part.accessZone]);
+            lines.userData.isAccessWire = true;
+            lines.raycast = () => { };
+            obj.add(lines);
+          }
+        } else if (obj.userData.origAccessMat) {
+          obj.material = obj.userData.origAccessMat;
+          delete obj.userData.origAccessMat;
+        }
+      });
+    }
+  }
 
   function clearPartXrayWire(visual) {
     visual.traverse(obj => {
@@ -2207,7 +2290,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     const animating = stepAnimations(now, dt);
     const damped = orbit.enableDamping ? orbit.update() : false;
     if (projectionDirty) fitProjection();
-    if (composer && aoEnabled && !xrayEnabled) composer.render();
+    if (composer && aoEnabled && !xrayEnabled && !accessibilityEnabled) composer.render();
     else renderer.render(scene, activeCam);
     if (animating || damped) schedule();
     else lastFrameTime = 0;
@@ -2397,6 +2480,17 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     let layout = resized || showGuides !== state.showDimensions;
     if (layout) { dims = { ...d }; showGuides = state.showDimensions; guides.set(showGuides, d); }
     if (xrayEnabled) applyXrayState(false);
+    if (accessibilityEnabled) {
+      for (const part of parts) {
+        clearPartAccessWire(part.visual);
+        part.visual.traverse(obj => {
+          if (obj.isMesh && obj.userData.origAccessMat) {
+            obj.material = obj.userData.origAccessMat;
+            delete obj.userData.origAccessMat;
+          }
+        });
+      }
+    }
     finishes.update(state.finishes);
 
     let optionChanged = false;
@@ -2435,7 +2529,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       const visible = p.def.when.every(rule => state.options[rule.option] === rule.choice);
       if (p.anchor.visible !== visible) { p.anchor.visible = visible; layout = true; }
     }
-    if (xrayEnabled) applyXrayState(true);
+    if (xrayEnabled || accessibilityEnabled) applyXrayState(true);
+    applyAccessibilityState();
 
     let jointImmediate = false;
     for (const j of joints.values()) {
@@ -2675,7 +2770,15 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
 
   function setXray(enabled) {
     xrayEnabled = Boolean(enabled);
-    applyXrayState(xrayEnabled);
+    applyXrayState(xrayEnabled || accessibilityEnabled);
+    renderer.shadowMap.needsUpdate = true;
+    schedule();
+  }
+
+  function setAccessibility(enabled) {
+    accessibilityEnabled = Boolean(enabled);
+    applyXrayState(xrayEnabled || accessibilityEnabled);
+    applyAccessibilityState();
     renderer.shadowMap.needsUpdate = true;
     schedule();
   }
@@ -2752,7 +2855,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       if (visible && hit.object.userData.interactive) visibleHits.push(hit.object);
     }
     if (!visibleHits.length) return null;
-    if (xrayEnabled) {
+    if (xrayEnabled || accessibilityEnabled) {
       const inner = visibleHits.find(obj => !isXrayFront(obj.userData.part));
       if (inner) return inner;
     }
@@ -2794,6 +2897,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       action,
       slotId,
       partId,
+      accessZone: accessibilityEnabled && partObj?.isShelf ? partObj.accessZone : null,
+      accessHeightMm: accessibilityEnabled && partObj?.isShelf ? partObj.accessHeightMm : 0,
       x: clientX - rect.left,
       y: clientY - rect.top
     });
@@ -2928,7 +3033,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     try {
       renderer.setPixelRatio(1);
       renderer.setSize(exportW, exportH, false);
-      const useAoComposer = Boolean(composer && aoEnabled && !xrayEnabled && !transparent);
+      const useAoComposer = Boolean(composer && aoEnabled && !xrayEnabled && !accessibilityEnabled && !transparent);
       if (useAoComposer) {
         composer.setPixelRatio(1);
         composer.setSize(exportW, exportH);
@@ -3027,7 +3132,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       scene.background = savedBg;
       renderer.setClearColor(savedClearColor, savedClearAlpha);
       fitProjection();
-      if (composer && aoEnabled && !xrayEnabled) composer.render();
+      if (composer && aoEnabled && !xrayEnabled && !accessibilityEnabled) composer.render();
       else renderer.render(scene, activeCam);
     }
 
@@ -3198,7 +3303,7 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
       }
       updatePartLiveCorners();
       fitProjection();
-      if (composer && aoEnabled && !xrayEnabled) composer.render();
+      if (composer && aoEnabled && !xrayEnabled && !accessibilityEnabled) composer.render();
       else renderer.render(scene, activeCam);
     }
   }
@@ -3224,6 +3329,8 @@ export async function createStudio(container, spec, assets, callbacks = {}, init
     setBackdrop,
     setRoomStyle,
     setXray,
+    setAccessibility,
+    isAccessibilityEnabled: () => accessibilityEnabled,
     setLedTemp,
     setAO,
     setPersonAutoRun,

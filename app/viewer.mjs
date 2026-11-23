@@ -4,6 +4,7 @@ import { mountInspector } from './inspector.mjs';
 import { createTranslator } from './i18n.mjs';
 import { ROOM_WALL_PRESETS, ROOM_FLOOR_PRESETS } from './presets.mjs';
 import { buildSpecSheetModel, renderSpecSheetDOM, composeSpecSheetPng } from './spec-sheet.mjs';
+import { REACH_ZONE_COLORS } from './person-ai.mjs';
 
 const { spec, assets, identity, brand = null, presentation = null } = JSON.parse(document.getElementById('study-data').textContent);
 const $ = id => document.getElementById(id);
@@ -44,6 +45,7 @@ $('app').innerHTML = `<a id="skip-link" class="skip" href="#inspector"></a>
 <label class="camera-select"><span id="lbl-backdrop" class="sr-only"></span><select id="backdrop"><option value="studio"></option><option value="room"></option></select></label>
 <button id="projection" type="button" aria-pressed="false"></button>
 <button id="xray-toggle" type="button" aria-pressed="false"></button>
+<button id="access-toggle" type="button" aria-pressed="false"></button>
 <button id="ao-toggle" type="button" aria-pressed="true"></button>
 </div>
 <span role="separator" aria-orientation="vertical"></span>
@@ -96,6 +98,7 @@ const defaultWallColor = presentation?.wallColor ?? ROOM_WALL_PRESETS[0].hex;
 let roomWallColor = defaultWallColor;
 let roomFloorKind = presentation?.floor ?? ROOM_FLOOR_PRESETS[0].id;
 let xrayEnabled = false;
+let accessEnabled = false;
 let aoEnabled = true;
 let personAutoRunning = false;
 let personAutoStatus = null;
@@ -223,11 +226,22 @@ function stopPersonAuto({ resetPos = false, quiet = false } = {}) {
   if (!quiet && wasRunning) showNotice(tr.t('noticePersonRunStop'));
 }
 
+function toggleAccessibility(nextVal) {
+  accessEnabled = typeof nextVal === 'boolean' ? nextVal : !accessEnabled;
+  const btn = $('access-toggle');
+  if (btn) btn.setAttribute('aria-pressed', String(accessEnabled));
+  scene?.setAccessibility(accessEnabled);
+  inspector?.sync();
+  showNotice(tr.t(accessEnabled ? 'noticeAccessOn' : 'noticeAccessOff', { height: state.person.height }));
+}
+
 const personCtrl = {
   isRunning: () => personAutoRunning,
   getStatusText: () => formatPersonAutoStatus(),
   onRun: startPersonAuto,
-  onStop: () => stopPersonAuto()
+  onStop: () => stopPersonAuto(),
+  isAccessEnabled: () => accessEnabled,
+  onToggleAccess: val => toggleAccessibility(val)
 };
 
 function controls(mode = 'immediate', preserved = null) {
@@ -301,6 +315,8 @@ function applyStaticStrings() {
   $('projection').title = tr.t('orthographicTitle');
   $('xray-toggle').textContent = tr.t('xrayToggle');
   $('xray-toggle').title = tr.t('xrayTitle');
+  $('access-toggle').textContent = tr.t('accessToggle');
+  $('access-toggle').title = tr.t('accessTitle');
   $('ao-toggle').textContent = tr.t('aoToggle');
   $('ao-toggle').title = tr.t('aoTitle');
 
@@ -424,14 +440,16 @@ function applyPresentation() {
   scene.setLighting(presentation.lighting);
   scene.setRoomStyle({ wallColor: roomWallColor, floorKind: roomFloorKind });
   scene.setBackdrop(backdropMode);
-  for (const id of ['projection', 'pins-toggle', 'xray-toggle']) $(id).setAttribute('aria-pressed', 'false');
+  for (const id of ['projection', 'pins-toggle', 'xray-toggle', 'access-toggle']) $(id).setAttribute('aria-pressed', 'false');
   $('ao-toggle').setAttribute('aria-pressed', 'true');
   xrayEnabled = false;
+  accessEnabled = false;
   aoEnabled = true;
   ledTempId = '3500';
   scene.setProjection('perspective');
   scene.setHotspots(false);
   scene.setXray(false);
+  scene.setAccessibility(false);
   scene.setAO(true);
   scene.setLedTemp(ledTempId);
   scene.resetPersonPosition(presentation.personStart);
@@ -457,16 +475,19 @@ $('reset').addEventListener('click', () => {
   state = initialState(spec);
   backdropMode = 'studio';
   xrayEnabled = false;
+  accessEnabled = false;
   aoEnabled = true;
   ledTempId = '3500';
   $('lighting').value = 'daylight';
   $('backdrop').value = 'studio';
   $('room-bar').hidden = true;
   $('xray-toggle').setAttribute('aria-pressed', 'false');
+  $('access-toggle').setAttribute('aria-pressed', 'false');
   $('ao-toggle').setAttribute('aria-pressed', 'true');
   scene?.setLighting('daylight');
   scene?.setBackdrop('studio');
   scene?.setXray(false);
+  scene?.setAccessibility(false);
   scene?.setAO(true);
   scene?.setLedTemp('3500');
   controls('animate');
@@ -535,6 +556,12 @@ $('xray-toggle').addEventListener('click', e => {
   btn.setAttribute('aria-pressed', String(xrayEnabled));
   scene?.setXray(xrayEnabled);
   showNotice(tr.t(xrayEnabled ? 'noticeXrayOn' : 'noticeXrayOff'));
+});
+
+$('access-toggle').addEventListener('click', e => {
+  const btn = e.currentTarget;
+  if (isBarDisabled(btn)) return;
+  toggleAccessibility();
 });
 
 $('ao-toggle').addEventListener('click', e => {
@@ -809,7 +836,17 @@ function describeHover(info) {
     finishName = `${state.person.height} ${tr.mmUnit}`;
     actionText = tr.t(state.person.pose === 'standing' ? 'hoverSit' : 'hoverStand');
   } else if (action.type === 'slot') {
-    actionText = tr.t('hoverEditFinish');
+    if (info.accessZone) {
+      swatchColor = REACH_ZONE_COLORS[info.accessZone] || swatchColor;
+      const zoneKey = info.accessZone === 'green'
+        ? 'hoverAccessGreen'
+        : info.accessZone === 'red'
+          ? 'hoverAccessRed'
+          : 'hoverAccessYellow';
+      actionText = tr.t(zoneKey, { y: info.accessHeightMm });
+    } else {
+      actionText = tr.t('hoverEditFinish');
+    }
   }
   return { title, finishName, swatchColor, actionText };
 }

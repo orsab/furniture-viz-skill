@@ -2,6 +2,82 @@ export const DEFAULT_ACTION_DELAY_MS = 10000;
 export const AUTO_CLOSE_HOLD_SEC = 2.6;
 export const JOINT_AUTO_CLOSE_SEC = 6.5;
 
+export const REACH_ZONE_COLORS = {
+  green: '#2b9358',
+  yellow: '#d89b1d',
+  red: '#c93b2b'
+};
+
+const SHELF_ID_RE = /shelf|מדף/i;
+const NON_SHELF_ID_RE = /(?:^|[-_])(top|base|bottom|plinth|ceiling|roof|back|side|divider|door|front|pull|knob|handle|rail|rod|wall|face|bed|strip|led|plate|toggle|sink|basin|tap|faucet|mirror|frame|leg|foot|post|apron|skirt)(?:$|[-_])/i;
+
+export function computePersonReachZones(personHeight = 1700) {
+  const h = Math.max(900, Math.min(2400, Number(personHeight) || 1700));
+  // Anthropometric proportions relative to standing stature H:
+  // - Eye height: ~0.936 * H (e.g. 1591 mm at H = 1700 mm)
+  // - Comfortable standing eye/chest shelf zone (green): waist/elbow (~0.50 * H) to eye level + 3% (~0.965 * H)
+  // - Standing hand reach zone (yellow): below waist (down to ~0.12 * H) or overhead reach up to ~1.20 * H (e.g. 2040 mm at H = 1700 mm)
+  // - Step-stool required zone (red): above standing hand reach (> 1.20 * H)
+  const eyeHeight = Math.round(h * 0.936);
+  const shoulderHeight = Math.round(h * 0.818);
+  const eyeZoneMin = Math.round(h * 0.50);
+  const eyeZoneMax = Math.round(h * 0.965);
+  const handReachMin = Math.round(h * 0.10);
+  const handReachMax = Math.round(h * 1.20);
+  return {
+    personHeight: h,
+    eyeHeight,
+    shoulderHeight,
+    eyeZoneMin,
+    eyeZoneMax,
+    handReachMin,
+    handReachMax
+  };
+}
+
+export function isShelfLikePart(partDef, size, enclosureHeight = 0) {
+  if (!partDef || !Array.isArray(size) || size.length < 3) return false;
+  if (partDef.joint) return false;
+  if (partDef.shape && partDef.shape !== 'box') return false;
+  const [sx, sy, sz] = size;
+  const id = String(partDef.id || '');
+  const explicitShelf = SHELF_ID_RE.test(id);
+  if (explicitShelf) {
+    return sy <= 80 && sx >= 140 && sz >= 120;
+  }
+  if (NON_SHELF_ID_RE.test(id)) return false;
+  const isHorizontalBoard = sy >= 8 && sy <= 50 && sx >= 220 && sz >= 160 && sx > sy * 4 && sz > sy * 3;
+  if (!isHorizontalBoard) return false;
+  return true;
+}
+
+export function classifyShelfAccessibility(shelfHeightMm, personHeight = 1700) {
+  const z = computePersonReachZones(personHeight);
+  const y = Number(shelfHeightMm) || 0;
+  if (y > z.handReachMax) {
+    return {
+      zone: 'red',
+      color: REACH_ZONE_COLORS.red,
+      shelfHeight: Math.round(y),
+      ...z
+    };
+  }
+  if (y >= z.eyeZoneMin && y <= z.eyeZoneMax) {
+    return {
+      zone: 'green',
+      color: REACH_ZONE_COLORS.green,
+      shelfHeight: Math.round(y),
+      ...z
+    };
+  }
+  return {
+    zone: 'yellow',
+    color: REACH_ZONE_COLORS.yellow,
+    shelfHeight: Math.round(y),
+    ...z
+  };
+}
+
 const SEAT_RE = /chair|stool|bench|sofa|couch|seat|cushion|ottoman|armchair|loveseat|banquette|pouf|כיסא|כסא|ספסל|ספה|מושב|הדום/i;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
