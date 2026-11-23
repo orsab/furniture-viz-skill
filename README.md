@@ -2,9 +2,11 @@
 
 `furniture-visualizer` teaches a tool-enabled AI agent to turn furniture sketches, dimensioned PDFs, photos, and briefs into an editable design spec and an interactive, offline 3D preview. It is a skill for your agent, not a model to download or fine-tune. Use a model that can inspect images when your sources include drawings or photos.
 
+**[Try the live 3D demo](https://orsab.github.io/furniture-viz-skill/)** — explore the primary bedroom joinery in your browser. No installation required.
+
 ## 1. Download the compiled release
 
-Download [`furniture-visualizer.skill`](https://github.com/orsab/furniture-viz-skill/releases/latest/download/furniture-visualizer.skill) from [GitHub Releases](https://github.com/orsab/furniture-viz-skill/releases/latest). Sign in with a GitHub account that has access to this private repository. Use the `.skill` file under **Assets**, not the source code archive.
+Download [`furniture-visualizer.skill`](https://github.com/orsab/furniture-viz-skill/releases/latest/download/furniture-visualizer.skill) from [GitHub Releases](https://github.com/orsab/furniture-viz-skill/releases/latest). Use the `.skill` file under **Assets**, not the source code archive.
 
 You need **Node.js 22.12+** to run the bundled tools. You do not need to clone the repository, install npm dependencies, or compile the release.
 
